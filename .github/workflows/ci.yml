@@ -10,23 +10,9 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: '3.12'
-      - run: uv sync
-      - name: Bootstrap formatting
-        if: always()
-        run: |
-          uv run ruff check --fix . || true
-          uv run ruff format .
-          uv run ruff check .
-      - name: Export reproducible source and lock snapshot
-        if: always()
-        run: |
-          uv run python - <<'PY'
-          import base64, json, pathlib, zlib
-          paths = [p for root in ('src', 'tests', 'scripts') for p in pathlib.Path(root).rglob('*.py')]
-          paths.append(pathlib.Path('uv.lock'))
-          payload = {str(p): p.read_text(encoding='utf-8') for p in paths if p.exists()}
-          print('ASSESSMENT_SNAPSHOT=' + base64.b64encode(zlib.compress(json.dumps(payload).encode())).decode())
-          PY
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
       - run: uv run pytest -v --junitxml=results.xml
         if: always()
       - run: uv run python scripts/benchmark.py

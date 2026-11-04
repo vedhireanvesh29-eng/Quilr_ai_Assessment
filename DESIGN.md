@@ -2,13 +2,15 @@
 
 ## SDK lifecycle and errors
 
-Task 1 targets official Python SDK v2 (`mcp>=2,<3`) and uses `mcp.server.MCPServer`, `@server.tool()`, and synchronous `run(transport="stdio")`. The host starts a subprocess; stdin/stdout carry one protocol connection, while Python logging writes to stderr. The server never writes debugging text to stdout.
+Task 1 targets official Python SDK v2 (`mcp>=2,<3`), with MCP 2.3.0 in the lockfile. `mcp.server.MCPServer` and `@server.tool()` provide the registry, discovery schemas, validation and invocation. A public SDK `Server` runner delegates discovery and execution to the registry's public methods. SDK `stdio_server()` owns parsing and framing. The host starts a subprocess; stdin/stdout carry one protocol connection, while Python logging writes to stderr. The server never writes debugging text to stdout.
 
 The SDK negotiates protocol compatibility. The subprocess test exercises the supported legacy sequence: `initialize` with version `2025-06-18`, response, `notifications/initialized`, then `tools/list` and `tools/call`. Newer SDK clients may use `server/discover`; application code does not implement either handshake itself.
 
 Public v2 middleware inspects raw `tools/call` parameters before SDK tool invocation. Pydantic schemas reject incorrect types, extra fields, malformed IDs, boolean/nonfinite/nonpositive amounts, and short reasons. Middleware raises `MCPError(code=-32602, message="Invalid tool arguments")`. This is a top-level protocol error; it is distinct from a successful JSON-RPC envelope whose tool result contains `isError:true`. Unknown tools return `-32602`; absent customer records are business errors surfaced by the SDK's tool-error conversion. Unknown methods and parse errors belong to the SDK.
 
-The SDK documentation marks middleware provisional within v2. Dependency locking and a real subprocess wire test are needed to detect future changes. This host could not install the SDK; see verification status. The implementation follows documented public v2 APIs without monkeypatching SDK internals.
+The SDK stdio parser yields Pydantic validation exceptions for malformed lines; its default runner logs these without a response. `transport.py` maps SDK parser exceptions to `-32700` for malformed JSON and `-32600` for invalid envelopes, with a null ID. Valid SDK-parsed messages pass through untouched to the public runner over an AnyIO memory stream with zero queue capacity. SDK protocol types serialize the error response. This adds error mapping without reimplementing wire parsing, initialization, dispatch or serialization, and without accessing private SDK attributes. Business-level tool failures are sanitized as tool results with `isError:true`.
+
+The SDK documentation marks middleware provisional within v2. The lockfile and real subprocess wire test detect version drift. The locked SDK is installed and exercised in GitHub Actions because the local host cannot download dependencies.
 
 ## Proxy authorization
 

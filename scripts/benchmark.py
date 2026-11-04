@@ -48,7 +48,7 @@ def save(rows: list[dict]) -> None:
         '<g font-family="Arial" fill="#0f172a">',
         '<text x="30" y="35" font-size="22">Streaming redactor: measured processing time</text>',
         '<text x="30" y="60" font-size="13">Median of 3 runs; '
-        f'{rows[0]["input_chars"]:,} input characters; excludes network time</text>',
+        f"{rows[0]['input_chars']:,} input characters; excludes network time</text>",
     ]
     for index, row in enumerate(rows):
         y = 90 + index * 43
@@ -58,7 +58,7 @@ def save(rows: list[dict]) -> None:
                 f'<text x="30" y="{y + 18}" font-size="13">{row["chunk_chars"]} chars/chunk</text>',
                 f'<rect x="155" y="{y}" width="{width:.2f}" height="25" rx="3" fill="#2563eb"/>',
                 f'<text x="{165 + width:.2f}" y="{y + 18}" font-size="13">'
-                f'{row["median_total_ms"]} ms</text>',
+                f"{row['median_total_ms']} ms</text>",
             ]
         )
     elements.append("</g></svg>")

@@ -18,6 +18,7 @@ from ai_field_assessment.common.jsonrpc import error
 
 async def run_stdio(registry: MCPServer, middleware) -> None:
     message_adapter = TypeAdapter(JSONRPCMessage)
+
     async def list_tools(ctx, params):
         return ListToolsResult(tools=await registry.list_tools())
 
@@ -30,9 +31,8 @@ async def run_stdio(registry: MCPServer, middleware) -> None:
                 is_error=True,
             )
 
-    server = Server(
-        registry.name, on_list_tools=list_tools, on_call_tool=call_tool, middleware=[middleware]
-    )
+    server = Server(registry.name, on_list_tools=list_tools, on_call_tool=call_tool)
+    server.middleware.append(middleware)
     async with stdio_server() as (raw_read, write):
         send, read = anyio.create_memory_object_stream(0)
 
