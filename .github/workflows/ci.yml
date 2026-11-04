@@ -19,8 +19,6 @@ jobs:
         if: always()
       - name: Measure services and render PNG plots
         if: always()
-        env:
-          EXPORT_REPORT_ASSETS: '1'
         run: uv run --with matplotlib==3.10.7 python scripts/benchmark_report.py
       - uses: actions/upload-artifact@v4
         if: always()
