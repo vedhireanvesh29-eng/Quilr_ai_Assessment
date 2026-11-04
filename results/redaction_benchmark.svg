@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="340" viewBox="0 0 760 340">
+<rect width="760" height="340" fill="#f8fafc"/>
+<g font-family="Arial" fill="#0f172a">
+<text x="30" y="35" font-size="22">Streaming redactor: measured processing time</text>
+<text x="30" y="60" font-size="13">Median of 3 runs; 114,000 input characters; excludes network time</text>
+<text x="30" y="108" font-size="13">1 chars/chunk</text>
+<rect x="155" y="90" width="450.00" height="25" rx="3" fill="#2563eb"/>
+<text x="615.00" y="108" font-size="13">47.733 ms</text>
+<text x="30" y="151" font-size="13">16 chars/chunk</text>
+<rect x="155" y="133" width="315.59" height="25" rx="3" fill="#2563eb"/>
+<text x="480.59" y="151" font-size="13">33.476 ms</text>
+<text x="30" y="194" font-size="13">64 chars/chunk</text>
+<rect x="155" y="176" width="316.04" height="25" rx="3" fill="#2563eb"/>
+<text x="481.04" y="194" font-size="13">33.523 ms</text>
+<text x="30" y="237" font-size="13">256 chars/chunk</text>
+<rect x="155" y="219" width="297.23" height="25" rx="3" fill="#2563eb"/>
+<text x="462.23" y="237" font-size="13">31.528 ms</text>
+<text x="30" y="280" font-size="13">1024 chars/chunk</text>
+<rect x="155" y="262" width="297.97" height="25" rx="3" fill="#2563eb"/>
+<text x="462.97" y="280" font-size="13">31.607 ms</text>
+</g></svg>

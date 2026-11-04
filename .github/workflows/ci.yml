@@ -1,0 +1,30 @@
+name: assessment-checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+      - run: uv sync
+      - name: Lint patch
+        if: always()
+        run: uv run ruff check --fix --diff .
+      - name: Format patch
+        if: always()
+        run: uv run ruff format --diff .
+      - run: uv run pytest -v --junitxml=results.xml
+        if: always()
+      - run: uv run python scripts/benchmark.py
+        if: always()
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-results
+          path: |
+            results.xml
+            uv.lock
