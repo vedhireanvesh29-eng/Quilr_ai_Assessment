@@ -17,6 +17,9 @@ jobs:
         if: always()
       - run: uv run python scripts/benchmark.py
         if: always()
+      - name: Measure services and render PNG plots
+        if: always()
+        run: uv run --with matplotlib==3.10.7 python scripts/benchmark_report.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -24,3 +27,5 @@ jobs:
           path: |
             results.xml
             uv.lock
+            docs/metrics.json
+            docs/images/*.png
