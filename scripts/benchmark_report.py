@@ -48,8 +48,10 @@ def distribution(samples: list[float]) -> dict:
 
 
 def test_counts() -> dict:
-    groups = {key: {"passed": 0, "failed": 0, "skipped": 0, "total": 0}
-              for key in ["task1", "task2", "task3", "task4", "common"]}
+    groups = {
+        key: {"passed": 0, "failed": 0, "skipped": 0, "total": 0}
+        for key in ["task1", "task2", "task3", "task4", "common"]
+    }
     for case in ET.parse("results.xml").getroot().iter("testcase"):
         classname, name = case.get("classname", ""), case.get("name", "")
         if "test_schemas" in classname or "test_mcp_stdio" in classname:
@@ -76,8 +78,10 @@ def test_counts() -> dict:
             state = "skipped"
         groups[group][state] += 1
         groups[group]["total"] += 1
-    groups["all"] = {key: sum(item[key] for item in groups.values())
-                     for key in ["passed", "failed", "skipped", "total"]}
+    groups["all"] = {
+        key: sum(item[key] for item in groups.values())
+        for key in ["passed", "failed", "skipped", "total"]
+    }
     return groups
 
 
@@ -97,10 +101,14 @@ async def endpoint_benchmarks() -> dict:
         nonlocal calls
         calls += 1
         body = json.loads(request.content)
-        return httpx.Response(200, json={
-            "jsonrpc": "2.0", "id": body["id"],
-            "result": {"content": [{"type": "text", "text": "mock"}]},
-        })
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": body["id"],
+                "result": {"content": [{"type": "text", "text": "mock"}]},
+            },
+        )
 
     app = create_app(transport=httpx.MockTransport(downstream))
     measurements = {}
@@ -108,16 +116,24 @@ async def endpoint_benchmarks() -> dict:
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://benchmark"
         ) as client:
-            for name, tool in [("proxy_allowed", "get_customer_record"),
-                               ("proxy_blocked", "admin_reset_key")]:
+            for name, tool in [
+                ("proxy_allowed", "get_customer_record"),
+                ("proxy_blocked", "admin_reset_key"),
+            ]:
                 samples = []
                 before = calls
                 for index in range(30):
                     started = time.perf_counter()
-                    response = await client.post("/mcp", headers={
-                        "Authorization": "Bearer dev-viewer"
-                    }, json={"jsonrpc": "2.0", "id": index, "method": "tools/call",
-                             "params": {"name": tool, "arguments": {}}})
+                    response = await client.post(
+                        "/mcp",
+                        headers={"Authorization": "Bearer dev-viewer"},
+                        json={
+                            "jsonrpc": "2.0",
+                            "id": index,
+                            "method": "tools/call",
+                            "params": {"name": tool, "arguments": {}},
+                        },
+                    )
                     samples.append((time.perf_counter() - started) * 1000)
                     if name == "proxy_blocked":
                         assert response.json()["error"]["code"] == -32001
@@ -139,7 +155,7 @@ def streaming_benchmarks() -> list[dict]:
             first = None
             started = time.perf_counter()
             for offset in range(0, len(text), size):
-                safe = guard.feed(text[offset:offset + size])
+                safe = guard.feed(text[offset : offset + size])
                 if safe and first is None:
                     first = time.perf_counter() - started
             guard.finish()
@@ -148,16 +164,21 @@ def streaming_benchmarks() -> list[dict]:
         guard = StreamingRedactor()
         tracemalloc.start()
         for offset in range(0, len(text), size):
-            guard.feed(text[offset:offset + size])
+            guard.feed(text[offset : offset + size])
         guard.finish()
         _, peak = tracemalloc.get_traced_memory()
         tracemalloc.stop()
-        rows.append({
-            "chunk_chars": size, "input_chars": len(text),
-            "total": distribution(totals), "first_output": distribution(firsts),
-            "peak_traced_bytes": peak, "max_pending_chars": guard.high_water,
-            "configured_pending_limit_chars": guard.max_buffer,
-        })
+        rows.append(
+            {
+                "chunk_chars": size,
+                "input_chars": len(text),
+                "total": distribution(totals),
+                "first_output": distribution(firsts),
+                "peak_traced_bytes": peak,
+                "max_pending_chars": guard.high_water,
+                "configured_pending_limit_chars": guard.max_buffer,
+            }
+        )
     return rows
 
 
@@ -168,8 +189,14 @@ async def quota_benchmarks(directory: str) -> dict:
     await limiter.initialize()
     rows = []
     events: list[tuple[float, int]] = []
-    for timestamp, requests in [(0, [20000] * 3), (15, [5000] * 2), (30, [1]),
-                                 (59, [1]), (60, [20000] * 3), (75, [10000, 1])]:
+    for timestamp, requests in [
+        (0, [20000] * 3),
+        (15, [5000] * 2),
+        (30, [1]),
+        (59, [1]),
+        (60, [20000] * 3),
+        (75, [10000, 1]),
+    ]:
         now = timestamp
 
         async def reserve(tokens: int, at: float = now) -> tuple[bool, int]:
@@ -188,16 +215,24 @@ async def quota_benchmarks(directory: str) -> dict:
             if accepted:
                 events.append((now, tokens))
         charged = sum(tokens for at, tokens in events if at > now - 60)
-        rows.append({
-            "logical_time_s": now, "requested_tokens": requests,
-            "accepted": sum(accepted for accepted, _ in outcomes),
-            "rejected": sum(not accepted for accepted, _ in outcomes),
-            "charged_tokens": charged, "reservation_batch_ms": round(duration, 4),
-        })
+        rows.append(
+            {
+                "logical_time_s": now,
+                "requested_tokens": requests,
+                "accepted": sum(accepted for accepted, _ in outcomes),
+                "rejected": sum(not accepted for accepted, _ in outcomes),
+                "charged_tokens": charged,
+                "reservation_batch_ms": round(duration, 4),
+            }
+        )
     assert rows[0]["accepted"] == 2 and rows[0]["rejected"] == 1
     assert all(row["charged_tokens"] <= 50000 for row in rows)
-    return {"limit_tokens": 50000, "window_seconds": 60, "timeline": rows,
-            "clock": "injected logical seconds; real concurrent SQLite transactions"}
+    return {
+        "limit_tokens": 50000,
+        "window_seconds": 60,
+        "timeline": rows,
+        "clock": "injected logical seconds; real concurrent SQLite transactions",
+    }
 
 
 @dataclass
@@ -236,29 +271,40 @@ async def fallback_benchmarks(directory: str) -> list[dict]:
             samples.append((time.perf_counter() - started) * 1000)
             assert result.model == ("primary" if mode == "primary" else "backup")
             cancelled.append(primary.cancelled)
-        rows.append({
-            "scenario": label, **distribution(samples),
-            "primary_fixture_delay_ms": delay * 1000,
-            "backup_fixture_delay_ms": 5,
-            "configured_primary_timeout_ms": 3000,
-            "primary_cancelled_each_trial": cancelled,
-        })
+        rows.append(
+            {
+                "scenario": label,
+                **distribution(samples),
+                "primary_fixture_delay_ms": delay * 1000,
+                "backup_fixture_delay_ms": 5,
+                "configured_primary_timeout_ms": 3000,
+                "primary_cancelled_each_trial": cancelled,
+            }
+        )
     assert all(rows[-1]["primary_cancelled_each_trial"])
     return rows
 
 
 def save_plots(report: dict) -> None:
-    plt.rcParams.update({
-        "font.family": "DejaVu Sans", "font.size": 10,
-        "axes.spines.top": False, "axes.spines.right": False,
-        "axes.titleweight": "bold", "figure.facecolor": "white",
-    })
+    plt.rcParams.update(
+        {
+            "font.family": "DejaVu Sans",
+            "font.size": 10,
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+            "axes.titleweight": "bold",
+            "figure.facecolor": "white",
+        }
+    )
     rows = report["streaming"]
     x = [str(row["chunk_chars"]) for row in rows]
     fig, axes = plt.subplots(1, 3, figsize=(13, 4.2), layout="constrained")
     measurements = [
-        ([row["first_output"]["median_ms"] * 1000 for row in rows],
-         "First safe output", "Microseconds"),
+        (
+            [row["first_output"]["median_ms"] * 1000 for row in rows],
+            "First safe output",
+            "Microseconds",
+        ),
         ([row["total"]["median_ms"] for row in rows], "Complete input processing", "Milliseconds"),
         ([row["peak_traced_bytes"] / 1024 for row in rows], "Peak traced allocation", "KiB"),
     ]
@@ -273,34 +319,49 @@ def save_plots(report: dict) -> None:
     plt.close(fig)
 
     rows = report["quota"]["timeline"]
-    fig, axis = plt.subplots(figsize=(9, 4.6), layout="constrained")
-    axis.step([r["logical_time_s"] for r in rows], [r["charged_tokens"] for r in rows],
-              where="post", color="#2563eb", linewidth=2)
-    axis.scatter([r["logical_time_s"] for r in rows], [r["charged_tokens"] for r in rows],
-                 color="#2563eb", zorder=3)
+    fig, axis = plt.subplots(figsize=(10, 4.6), layout="constrained")
+    bars = axis.bar(
+        [str(row["logical_time_s"]) for row in rows],
+        [row["charged_tokens"] for row in rows],
+        color="#2563eb",
+        width=0.65,
+    )
     axis.axhline(50000, color="#dc2626", linestyle="--", label="50,000-token cap")
-    for row in rows:
-        axis.annotate(f'{row["accepted"]} accepted / {row["rejected"]} rejected',
-                      (row["logical_time_s"], row["charged_tokens"]),
-                      xytext=(0, -22 if row["logical_time_s"] == 59 else 12),
-                      textcoords="offset points", fontsize=8, ha="center")
-    axis.set(title="Sliding window: real SQLite reservations on a controlled timeline",
-             xlabel="Injected logical time (seconds)", ylabel="Tokens charged after each request batch",
-             ylim=(0, 62000), xlim=(-8, 85))
+    axis.bar_label(
+        bars,
+        labels=[f"{row['accepted']} accepted\\n{row['rejected']} rejected" for row in rows],
+        padding=5,
+        fontsize=9,
+    )
+    axis.set(
+        title="Sliding-window quota: real SQLite transactions",
+        xlabel="Request batch at injected second (categorical spacing)",
+        ylabel="Tokens charged after each batch",
+        ylim=(0, 65000),
+    )
     axis.legend(loc="lower right")
-    axis.grid(alpha=0.15)
+    axis.grid(axis="y", alpha=0.15)
     fig.savefig(IMAGES / "token_rate_limit.png", dpi=150)
     plt.close(fig)
 
     rows = report["fallback"]
     fig, axis = plt.subplots(figsize=(9, 4.4), layout="constrained")
-    bars = axis.bar([row["scenario"] for row in rows],
-                    [row["median_ms"] for row in rows], color=["#2563eb", "#0891b2", "#ea580c"])
+    bars = axis.bar(
+        [row["scenario"] for row in rows],
+        [row["median_ms"] for row in rows],
+        color=["#2563eb", "#0891b2", "#ea580c"],
+    )
     axis.set_yscale("log")
-    axis.set(title="Model routing | controlled asynchronous providers",
-             ylabel="Median completion time (ms, log scale)")
-    axis.bar_label(bars, labels=[f'{row["median_ms"]:.2f} ms\nn={row["n"]}' for row in rows],
-                   padding=5, fontsize=9)
+    axis.set(
+        title="Model routing | controlled asynchronous providers",
+        ylabel="Median completion time (ms, log scale)",
+    )
+    axis.bar_label(
+        bars,
+        labels=[f"{row['median_ms']:.2f} ms\nn={row['n']}" for row in rows],
+        padding=5,
+        fontsize=9,
+    )
     axis.set_ylim(1, 10000)
     axis.grid(axis="y", alpha=0.15)
     fig.savefig(IMAGES / "model_failover.png", dpi=150)
@@ -308,13 +369,15 @@ def save_plots(report: dict) -> None:
 
     endpoints = report["endpoints"]
     names = ["MCP tool call", "Authorized proxy", "Blocked admin call"]
-    values = [endpoints[key]["median_ms"] for key in
-              ["mcp_call", "proxy_allowed", "proxy_blocked"]]
+    values = [endpoints[key]["median_ms"] for key in ["mcp_call", "proxy_allowed", "proxy_blocked"]]
     fig, axis = plt.subplots(figsize=(9, 4), layout="constrained")
     bars = axis.barh(names, values, color=["#2563eb", "#0891b2", "#64748b"])
     axis.bar_label(bars, fmt="%.3f ms", padding=4)
-    axis.set(title="SDK and ASGI round trips | in-process | 30 trials",
-             xlabel="Median elapsed time (ms)", xlim=(0, max(values) * 1.35))
+    axis.set(
+        title="SDK and ASGI round trips | in-process | 30 trials",
+        xlabel="Median elapsed time (ms)",
+        xlim=(0, max(values) * 1.35),
+    )
     axis.invert_yaxis()
     axis.grid(axis="x", alpha=0.15)
     fig.savefig(IMAGES / "endpoint_latency.png", dpi=150)
@@ -326,7 +389,8 @@ async def main() -> None:
     with tempfile.TemporaryDirectory() as directory:
         report = {
             "environment": {
-                "python": platform.python_version(), "platform": platform.platform(),
+                "python": platform.python_version(),
+                "platform": platform.platform(),
                 "logical_cpus": os.cpu_count(),
                 "source_commit": os.getenv("GITHUB_SHA", "local"),
                 "measured_at_utc": datetime.now(UTC).isoformat(),
@@ -340,11 +404,15 @@ async def main() -> None:
     save_plots(report)
     (OUTPUT / "metrics.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print("ASSESSMENT_METRICS=" + json.dumps(report))
-    # Export public report assets so a connected client can commit measured files.
-    for path in sorted(IMAGES.glob("*.png")):
-        print("ASSESSMENT_PNG=" + json.dumps({
-            "path": str(path), "base64": base64.b64encode(path.read_bytes()).decode()
-        }))
+    # Optional public-asset export for connected clients; normal CI uses artifacts.
+    if os.getenv("EXPORT_REPORT_ASSETS") == "1":
+        for path in sorted(IMAGES.glob("*.png")):
+            print(
+                "ASSESSMENT_PNG="
+                + json.dumps(
+                    {"path": str(path), "base64": base64.b64encode(path.read_bytes()).decode()}
+                )
+            )
 
 
 if __name__ == "__main__":
