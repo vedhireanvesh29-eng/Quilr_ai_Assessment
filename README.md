@@ -2,12 +2,16 @@
 
 Four Python services demonstrating MCP tools, tool-level authorization, streamed PII redaction, and a persistent token quota with model failover. Customer records, refunds, credentials, and LLM responses are **simulated**. No paid API key is needed.
 
+[![Assessment checks](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/actions/workflows/ci.yml/badge.svg)](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/actions/workflows/ci.yml)
+
 ## Quick start
 
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
 ```sh
-uv sync
+git clone https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment.git
+cd Quilr_ai_Assessment
+uv sync --locked
 uv run python scripts/run_demo.py
 ```
 

@@ -101,6 +101,21 @@ async def test_stdio_lifecycle_discovery_validation_and_tools():
         assert (await receive(process))["error"]["code"] == -32600
         await send(process, {"jsonrpc": "2.0", "id": 9, "method": "tools/list"})
         assert "result" in await receive(process)
+        await send(
+            process,
+            {
+                "jsonrpc": "2.0",
+                "id": 10,
+                "method": "tools/call",
+                "params": {
+                    "name": "get_customer_record",
+                    "arguments": {"customer_id": "CUST-99999"},
+                },
+            },
+        )
+        missing = (await receive(process))["result"]
+        assert missing["isError"] is True
+        assert missing["content"][0]["text"] == "Customer not found"
     finally:
         process.stdin.close()
         try:

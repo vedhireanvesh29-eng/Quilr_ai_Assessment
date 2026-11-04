@@ -25,9 +25,14 @@ async def run_stdio(registry: MCPServer, middleware) -> None:
     async def call_tool(ctx, params):
         try:
             return await registry.call_tool(params.name, params.arguments or {})
-        except ToolError:
+        except ToolError as exc:
+            message = (
+                "Customer not found"
+                if str(exc) == "Customer not found"
+                else "Customer operation unavailable"
+            )
             return CallToolResult(
-                content=[TextContent(type="text", text="Customer operation unavailable")],
+                content=[TextContent(type="text", text=message)],
                 is_error=True,
             )
 

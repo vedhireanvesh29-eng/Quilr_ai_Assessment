@@ -1,6 +1,6 @@
 # Verification status
 
-The implementation was created on a Windows host with restricted network and loopback access. Package installation failed because PyPI DNS could not be resolved. Full HTTP/SDK tests require the declared dependencies and are also configured in GitHub Actions.
+The project is verified in GitHub Actions using Python 3.12, the official MCP SDK 2.3.0, and dependencies from `uv.lock`. The final workflow enforces dependency locking, lint, formatting, all tests, and the benchmark.
 
 Executed locally on November 4, 2026:
 
@@ -10,6 +10,8 @@ Executed locally on November 4, 2026:
 - Python compilation of all source, scripts and tests: passed.
 - Redactor processing benchmark: completed; see the JSON and SVG in this directory. Input length is 114,000 characters. These measurements exclude provider/network time.
 
-The full asynchronous test run was blocked locally: Windows asyncio initialization waits for a loopback socket pair, which the restricted host does not permit. SDK/HTTP integration and Ruff checks require dependency installation. GitHub Actions is configured to run these checks in a clean Ubuntu environment; consult the workflow run for its actual status.
+GitHub Actions verification on November 4, 2026: **37 tests passed**, including the real stdio subprocess, initialization, discovery, successful tools, strict argument errors, malformed JSON/envelopes, downstream authorization, streaming cancellation, UTF-8 SSE parsing, SQLite concurrency, quotas, and primary/backup failures. Ruff lint and formatting checks passed. Dependency installation with `uv sync --locked` and the benchmark also passed.
+
+The complete suite ran in [GitHub Actions](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/actions). Local asynchronous tests were blocked because the restricted Windows host cannot create asyncio's loopback socket pair; PyPI downloads also failed locally. These host restrictions did not prevent clean-environment CI verification.
 
 A written test is not counted as passing until executed.

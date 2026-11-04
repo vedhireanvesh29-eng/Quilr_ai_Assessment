@@ -37,6 +37,8 @@ class RedactionTests(unittest.TestCase):
     def test_safe_text_preserved(self):
         text = "Hello 世界. Invoice 1234 costs 56 dollars.\nSee you soon!"
         self.assertEqual(redacted(text, [1] * len(text))[0], text)
+        text = "Contact:<john@example.com>, please."
+        self.assertEqual(redacted(text, [1] * len(text))[0], "Contact:<[REDACTED]>, please.")
 
     def test_long_candidate_fails_closed(self):
         for text in ["a" * 10000 + "@example.com end", "1 " * 10000 + "end"]:

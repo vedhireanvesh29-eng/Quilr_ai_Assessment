@@ -8,7 +8,11 @@ once, and their remainder is discarded through the next safe delimiter.
 import re
 
 MARKER = "[REDACTED]"
-EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
+EMAIL = re.compile(
+    r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+    r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+"
+)
 SSN = re.compile(r"(?<![0-9])[0-9]{3}-[0-9]{2}-[0-9]{4}(?![0-9])")
 CARD = re.compile(r"(?<![0-9])(?:[0-9][ -]?){12,18}[0-9](?![0-9])")
 
@@ -28,10 +32,11 @@ def luhn(value: str) -> bool:
 
 
 def redact(value: str) -> str:
-    value = EMAIL.sub(MARKER, value)
-    # Also hide incomplete email-like tokens rather than releasing a prefix at EOF.
     if "@" in value:
-        return MARKER
+        value = EMAIL.sub(MARKER, value)
+        # Also hide incomplete email-like tokens rather than releasing a prefix at EOF.
+        if "@" in value:
+            return MARKER
     value = SSN.sub(MARKER, value)
     return CARD.sub(lambda m: MARKER if luhn(m[0]) else m[0], value)
 

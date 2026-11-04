@@ -6,10 +6,15 @@ import sys
 import anyio
 from mcp import MCPError
 from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import ValidationError
 
 from ai_field_assessment.config import Settings
-from ai_field_assessment.task1_mcp_server.customer_service import get_customer, refund
+from ai_field_assessment.task1_mcp_server.customer_service import (
+    CustomerNotFound,
+    get_customer,
+    refund,
+)
 from ai_field_assessment.task1_mcp_server.schemas import (
     Amount,
     CustomerID,
@@ -43,12 +48,18 @@ def create_server() -> MCPServer:
     @server.tool()
     def get_customer_record(customer_id: CustomerID) -> dict:
         """Look up a simulated customer with an exact CUST-XXXXX identifier."""
-        return get_customer(customer_id)
+        try:
+            return get_customer(customer_id)
+        except CustomerNotFound as exc:
+            raise ToolError("Customer not found") from exc
 
     @server.tool()
     def trigger_refund(customer_id: CustomerID, amount: Amount, reason: Reason) -> dict:
         """Create a simulated refund; no real payment is made."""
-        return refund(customer_id, amount, reason)
+        try:
+            return refund(customer_id, amount, reason)
+        except CustomerNotFound as exc:
+            raise ToolError("Customer not found") from exc
 
     return server
 
