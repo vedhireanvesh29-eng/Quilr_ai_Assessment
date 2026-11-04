@@ -329,7 +329,7 @@ def save_plots(report: dict) -> None:
     axis.axhline(50000, color="#dc2626", linestyle="--", label="50,000-token cap")
     axis.bar_label(
         bars,
-        labels=[f"{row['accepted']} accepted\\n{row['rejected']} rejected" for row in rows],
+        labels=[f"{row['accepted']} accepted\n{row['rejected']} rejected" for row in rows],
         padding=5,
         fontsize=9,
     )
