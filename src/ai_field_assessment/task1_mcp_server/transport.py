@@ -14,6 +14,7 @@ from mcp.types import CallToolResult, JSONRPCMessage, ListToolsResult, TextConte
 from pydantic import TypeAdapter, ValidationError
 
 from ai_field_assessment.common.jsonrpc import error
+from ai_field_assessment.task1_mcp_server.customer_service import CustomerNotFound
 
 
 async def run_stdio(registry: MCPServer, middleware) -> None:
@@ -26,11 +27,17 @@ async def run_stdio(registry: MCPServer, middleware) -> None:
         try:
             return await registry.call_tool(params.name, params.arguments or {})
         except ToolError as exc:
-            message = (
-                "Customer not found"
-                if str(exc) == "Customer not found"
-                else "Customer operation unavailable"
-            )
+            # SDK ToolError wrappers add context to their messages. Recognize
+            # the domain exception by type; never relay arbitrary exception text.
+            message = "Customer operation unavailable"
+            cause: BaseException | None = exc
+            for _ in range(8):
+                if isinstance(cause, CustomerNotFound):
+                    message = "Customer not found"
+                    break
+                if cause is None:
+                    break
+                cause = cause.__cause__
             return CallToolResult(
                 content=[TextContent(type="text", text=message)],
                 is_error=True,
