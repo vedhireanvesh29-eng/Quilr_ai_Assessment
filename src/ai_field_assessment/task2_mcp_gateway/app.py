@@ -15,7 +15,9 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        async with httpx.AsyncClient(timeout=10, transport=transport, follow_redirects=False) as client:
+        async with httpx.AsyncClient(
+            timeout=10, transport=transport, follow_redirects=False
+        ) as client:
             app.state.client = client
             yield
 
@@ -39,7 +41,8 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         try:
             body = validate_request(body)
         except RPCError as exc:
-            return JSONResponse(error(None, exc.code, exc.message))
+            request_id = body["id"] if exc.code == -32602 else None
+            return JSONResponse(error(request_id, exc.code, exc.message))
         request_id = body["id"]
         if body["method"] == "tools/call":
             params = body.get("params")
@@ -52,7 +55,9 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         except httpx.TimeoutException:
             return JSONResponse(error(request_id, -32002, "Downstream timeout"), status_code=504)
         except httpx.RequestError:
-            return JSONResponse(error(request_id, -32003, "Downstream unavailable"), status_code=502)
+            return JSONResponse(
+                error(request_id, -32003, "Downstream unavailable"), status_code=502
+            )
         # Only JSON is supported by this intentionally narrow mock transport.
         try:
             result = upstream.json()
@@ -61,8 +66,12 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
             if result.get("id") != request_id or (("error" in result) == ("result" in result)):
                 raise ValueError("Invalid response")
         except (ValueError, UnicodeDecodeError):
-            return JSONResponse(error(request_id, -32003, "Invalid downstream response"), status_code=502)
-        return Response(upstream.content, status_code=upstream.status_code, media_type="application/json")
+            return JSONResponse(
+                error(request_id, -32003, "Invalid downstream response"), status_code=502
+            )
+        return Response(
+            upstream.content, status_code=upstream.status_code, media_type="application/json"
+        )
 
     return app
 

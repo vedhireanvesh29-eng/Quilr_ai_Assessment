@@ -21,8 +21,12 @@ class RateLimitExceeded(Exception):
 
 class RateLimiter:
     def __init__(
-        self, path: str, limit: int = 50_000, window: float = 60,
-        clock: Callable[[], float] = time.time, stale_after: float = 120,
+        self,
+        path: str,
+        limit: int = 50_000,
+        window: float = 60,
+        clock: Callable[[], float] = time.time,
+        stale_after: float = 120,
     ) -> None:
         if limit <= 0 or window <= 0 or stale_after <= 0:
             raise ValueError("Invalid rate limiter configuration")
@@ -63,21 +67,24 @@ class RateLimiter:
             connection.execute("BEGIN IMMEDIATE")
             connection.execute(
                 "UPDATE events SET state='stale', timestamp=? "
-                "WHERE state='pending' AND timestamp<=?", (now, now - self.stale_after)
+                "WHERE state='pending' AND timestamp<=?",
+                (now, now - self.stale_after),
             )
             connection.execute(
                 "DELETE FROM events WHERE state!='pending' AND timestamp<=?", (now - self.window,)
             )
             used = connection.execute(
                 "SELECT COALESCE(SUM(COALESCE(actual, reserved)),0) FROM events "
-                "WHERE tenant=? AND (timestamp>? OR state='pending')", (tenant, now - self.window)
+                "WHERE tenant=? AND (timestamp>? OR state='pending')",
+                (tenant, now - self.window),
             ).fetchone()[0]
             if used + tokens > self.limit:
                 # Commit housekeeping even when rejecting a request.
                 connection.commit()
                 raise RateLimitExceeded()
             connection.execute(
-                "INSERT INTO events VALUES (?,?,?,?,NULL,'pending')", (request_id, tenant, now, tokens)
+                "INSERT INTO events VALUES (?,?,?,?,NULL,'pending')",
+                (request_id, tenant, now, tokens),
             )
             connection.commit()
             return request_id

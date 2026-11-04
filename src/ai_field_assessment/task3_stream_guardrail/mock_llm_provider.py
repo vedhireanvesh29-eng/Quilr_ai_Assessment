@@ -40,10 +40,16 @@ async def primary(body: Input):
 
 
 def completion(body: Input, model: str) -> dict:
-    text = ("Simulated " + model + " response").encode()[: body.max_output_tokens].decode(
-        "utf-8", errors="ignore"
+    text = (
+        ("Simulated " + model + " response")
+        .encode()[: body.max_output_tokens]
+        .decode("utf-8", errors="ignore")
     )
-    return {"text": text, "model": model, "usage_tokens": len(body.prompt.encode()) + len(text.encode())}
+    return {
+        "text": text,
+        "model": model,
+        "usage_tokens": len(body.prompt.encode()) + len(text.encode()),
+    }
 
 
 @app.post("/backup")

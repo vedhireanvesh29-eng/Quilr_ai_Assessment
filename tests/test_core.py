@@ -9,7 +9,7 @@ from pathlib import Path
 from ai_field_assessment.common.jsonrpc import RPCError, validate_request
 from ai_field_assessment.task3_stream_guardrail.redactor import StreamingRedactor
 from ai_field_assessment.task3_stream_guardrail.stream_parser import sse_data
-from ai_field_assessment.task4_model_router.rate_limiter import RateLimitExceeded, RateLimiter
+from ai_field_assessment.task4_model_router.rate_limiter import RateLimiter, RateLimitExceeded
 from ai_field_assessment.task4_model_router.router import Completion, ModelRouter, ProviderError
 
 
@@ -17,7 +17,7 @@ def redacted(text: str, sizes: list[int], maximum: int = 4096) -> tuple[str, int
     guard = StreamingRedactor(maximum)
     parts, offset = [], 0
     for size in sizes:
-        parts.append(guard.feed(text[offset:offset + size]))
+        parts.append(guard.feed(text[offset : offset + size]))
         offset += size
     parts.append(guard.feed(text[offset:]))
     parts.append(guard.finish())
@@ -62,12 +62,15 @@ class ParserTests(unittest.IsolatedAsyncioTestCase):
         async def source():
             for byte in ": hi\r\ndata: café\r\ndata: world\r\n\r\n".encode():
                 yield bytes([byte])
+
         self.assertEqual([data async for data in sse_data(source())], ["café\nworld"])
 
     async def test_truncated_and_oversized(self):
         for wire in [b"data: incomplete", b"data: " + b"a" * 100 + b"\n\n", b"data: \xff\n\n"]:
-            async def source():
+
+            async def source(wire=wire):
                 yield wire
+
             with self.assertRaises((ValueError, UnicodeError)):
                 _ = [data async for data in sse_data(source(), limit=32)]
 
@@ -85,8 +88,9 @@ class LimiterTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_atomic_independent_connections(self):
         others = [RateLimiter(self.path, limit=50, clock=lambda: self.now) for _ in range(3)]
-        results = await asyncio.gather(*(other.reserve("tenant", 20) for other in others),
-                                       return_exceptions=True)
+        results = await asyncio.gather(
+            *(other.reserve("tenant", 20) for other in others), return_exceptions=True
+        )
         self.assertEqual(sum(isinstance(r, str) for r in results), 2)
         self.assertEqual(sum(isinstance(r, RateLimitExceeded) for r in results), 1)
 
@@ -125,9 +129,11 @@ class LimiterTests(unittest.IsolatedAsyncioTestCase):
 class FakeProvider:
     def __init__(self, mode="ok"):
         self.mode, self.calls, self.cancelled = mode, 0, False
+        self.started = asyncio.Event()
 
     async def complete(self, prompt, max_output_tokens):
         self.calls += 1
+        self.started.set()
         if self.mode == "timeout":
             try:
                 await asyncio.Event().wait()
@@ -174,8 +180,7 @@ class RouterTests(LimiterTests):
         primary = FakeProvider("timeout")
         router = ModelRouter(self.limiter, primary, FakeProvider())
         task = asyncio.create_task(router.complete("a", "hello", 45))
-        while primary.calls == 0:
-            await asyncio.sleep(0)
+        await primary.started.wait()
         task.cancel()
         with self.assertRaises(asyncio.CancelledError):
             await task

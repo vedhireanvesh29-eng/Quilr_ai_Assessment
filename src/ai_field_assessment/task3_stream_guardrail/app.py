@@ -62,9 +62,11 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
                 yield event({"error": {"code": "PROVIDER_ERROR", "message": "Stream unavailable"}})
             # CancelledError is deliberately not caught. The response context closes upstream.
 
-        return StreamingResponse(stream(), media_type="text/event-stream", headers={
-            "Cache-Control": "no-cache", "X-Accel-Buffering": "no"
-        })
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     return app
 

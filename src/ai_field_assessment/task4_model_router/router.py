@@ -35,8 +35,12 @@ class UTF8TokenCounter:
 
 class ModelRouter:
     def __init__(
-        self, limiter: RateLimiter, primary: Provider, backup: Provider,
-        timeout: float = 3, counter: TokenCounter | None = None,
+        self,
+        limiter: RateLimiter,
+        primary: Provider,
+        backup: Provider,
+        timeout: float = 3,
+        counter: TokenCounter | None = None,
     ) -> None:
         self.limiter, self.primary, self.backup = limiter, primary, backup
         self.timeout, self.counter = timeout, counter or UTF8TokenCounter()

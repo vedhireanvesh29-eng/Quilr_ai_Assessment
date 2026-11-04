@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ai_field_assessment.task4_model_router.rate_limiter import RateLimitExceeded, RateLimiter
+from ai_field_assessment.task4_model_router.rate_limiter import RateLimiter, RateLimitExceeded
 
 
 def main() -> None:
@@ -34,8 +34,15 @@ def main() -> None:
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             outcomes = list(executor.map(reserve, range(3)))
         assert sum(outcomes) == 2, outcomes
-        print(json.dumps({"sqlite_independent_connection_reservations": outcomes,
-                          "accepted": sum(outcomes), "rejected": 3 - sum(outcomes)}))
+        print(
+            json.dumps(
+                {
+                    "sqlite_independent_connection_reservations": outcomes,
+                    "accepted": sum(outcomes),
+                    "rejected": 3 - sum(outcomes),
+                }
+            )
+        )
 
 
 if __name__ == "__main__":

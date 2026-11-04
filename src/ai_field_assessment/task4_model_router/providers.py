@@ -11,9 +11,9 @@ class HTTPProvider:
 
     async def complete(self, prompt: str, max_output_tokens: int) -> Completion:
         try:
-            response = await self.client.post(self.url, json={
-                "prompt": prompt, "max_output_tokens": max_output_tokens
-            })
+            response = await self.client.post(
+                self.url, json={"prompt": prompt, "max_output_tokens": max_output_tokens}
+            )
         except httpx.TimeoutException as exc:
             raise TimeoutError() from exc
         except httpx.RequestError as exc:

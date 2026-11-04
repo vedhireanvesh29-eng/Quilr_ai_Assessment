@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ai_field_assessment.config import Settings
 from ai_field_assessment.task4_model_router.providers import HTTPProvider
-from ai_field_assessment.task4_model_router.rate_limiter import RateLimitExceeded, RateLimiter
+from ai_field_assessment.task4_model_router.rate_limiter import RateLimiter, RateLimitExceeded
 from ai_field_assessment.task4_model_router.router import ModelRouter, ProviderError
 
 
@@ -22,9 +22,16 @@ class CompletionInput(BaseModel):
 
 
 def failure(code: str, status: int) -> JSONResponse:
-    return JSONResponse({"error": {
-        "code": code, "message": "Unable to process this request", "request_id": uuid4().hex
-    }}, status_code=status)
+    return JSONResponse(
+        {
+            "error": {
+                "code": code,
+                "message": "Unable to process this request",
+                "request_id": uuid4().hex,
+            }
+        },
+        status_code=status,
+    )
 
 
 def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
@@ -34,10 +41,14 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
     async def lifespan(app: FastAPI):
         limiter = RateLimiter(settings.database_path, settings.tokens_per_minute)
         await limiter.initialize()
-        async with httpx.AsyncClient(timeout=settings.primary_timeout, transport=transport) as client:
+        async with httpx.AsyncClient(
+            timeout=settings.primary_timeout, transport=transport
+        ) as client:
             app.state.router = ModelRouter(
-                limiter, HTTPProvider(client, settings.primary_provider_url),
-                HTTPProvider(client, settings.backup_provider_url), settings.primary_timeout
+                limiter,
+                HTTPProvider(client, settings.primary_provider_url),
+                HTTPProvider(client, settings.backup_provider_url),
+                settings.primary_timeout,
             )
             yield
 

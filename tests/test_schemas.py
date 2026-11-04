@@ -20,8 +20,9 @@ class SchemaTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 RefundInput(customer_id="CUST-12345", amount=amount, reason="Damaged item")
         for amount in [1, 75.50]:
-            self.assertGreater(RefundInput(
-                customer_id="CUST-12345", amount=amount, reason="Damaged item"
-            ).amount, 0)
+            self.assertGreater(
+                RefundInput(customer_id="CUST-12345", amount=amount, reason="Damaged item").amount,
+                0,
+            )
         with self.assertRaises(ValidationError):
             RefundInput(customer_id="CUST-12345", amount=1, reason="short")
