@@ -172,8 +172,8 @@ async def quota_benchmarks(directory: str) -> dict:
                                  (59, [1]), (60, [20000] * 3), (75, [10000, 1])]:
         now = timestamp
 
-        async def reserve(tokens: int) -> tuple[bool, int]:
-            connection_owner = RateLimiter(path, clock=lambda: now)
+        async def reserve(tokens: int, at: float = now) -> tuple[bool, int]:
+            connection_owner = RateLimiter(path, clock=lambda: at)
             try:
                 reservation = await connection_owner.reserve("measured-tenant", tokens)
             except RateLimitExceeded:

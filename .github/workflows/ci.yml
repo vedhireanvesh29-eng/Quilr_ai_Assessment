@@ -20,6 +20,13 @@ jobs:
       - name: Measure services and render PNG plots
         if: always()
         run: uv run --with matplotlib==3.10.7 python scripts/benchmark_report.py
+      - name: Format benchmark source for review
+        if: always()
+        run: |
+          uv run ruff check --fix scripts/benchmark_report.py || true
+          uv run ruff format scripts/benchmark_report.py
+          uv run python -c "import json,pathlib; print('ASSESSMENT_SOURCE=' + json.dumps(pathlib.Path('scripts/benchmark_report.py').read_text()))"
+          uv run ruff check scripts/benchmark_report.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
