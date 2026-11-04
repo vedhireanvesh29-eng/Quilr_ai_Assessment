@@ -62,6 +62,11 @@ async def test_stdio_lifecycle_discovery_validation_and_tools():
         process.stdin.write(b"{malformed\n")
         await process.stdin.drain()
         assert (await receive(process))["error"]["code"] == -32700
+        # A malformed envelope is also refused, and the connection remains usable.
+        await send(process, {"bad": "envelope"})
+        assert (await receive(process))["error"]["code"] == -32600
+        await send(process, {"jsonrpc": "2.0", "id": 9, "method": "tools/list"})
+        assert "result" in await receive(process)
     finally:
         process.stdin.close()
         try:

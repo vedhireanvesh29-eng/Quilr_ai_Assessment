@@ -3,6 +3,7 @@
 import logging
 import sys
 
+import anyio
 from mcp import MCPError
 from mcp.server import MCPServer
 from pydantic import ValidationError
@@ -53,8 +54,10 @@ def create_server() -> MCPServer:
 
 
 def main() -> None:
+    from ai_field_assessment.task1_mcp_server.transport import run_stdio
+
     logging.basicConfig(stream=sys.stderr, level=Settings.from_env().log_level)
-    create_server().run(transport="stdio")
+    anyio.run(run_stdio, create_server(), validate_tool_call)
 
 
 if __name__ == "__main__":
