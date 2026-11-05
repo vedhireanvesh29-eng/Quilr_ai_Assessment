@@ -116,7 +116,13 @@ class RateLimiter:
                 "WHERE request_id=? AND state IN ('pending','stale')",
                 (actual, self.clock(), request_id),
             ).rowcount
-            if changed == 0:
+            if (
+                changed == 0
+                and connection.execute(
+                    "SELECT 1 FROM events WHERE request_id=?", (request_id,)
+                ).fetchone()
+                is None
+            ):
                 # A crashed/slow attempt may finish after stale cleanup. Restore
                 # its charge with caller-retained attribution rather than lose it.
                 if tenant is None or reserved is None:

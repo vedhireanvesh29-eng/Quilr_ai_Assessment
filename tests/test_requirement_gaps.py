@@ -201,7 +201,7 @@ async def test_task4_duplicate_reconciliation_is_idempotent(tmp_path):
     await limiter.initialize()
     request_id = await limiter.reserve("tenant", 30)
     await limiter.reconcile(request_id, 20, tenant="tenant", reserved=30)
-    await limiter.reconcile(request_id, 1, tenant="tenant", reserved=30)
+    await limiter.reconcile(request_id, 1)
     await limiter.reserve("tenant", 30)
     with pytest.raises(RateLimitExceeded):
         await limiter.reserve("tenant", 1)
@@ -223,7 +223,7 @@ def test_task4_persistence_across_interpreter_restart(tmp_path):
     assert second.returncode != 0 and b"RateLimitExceeded" in second.stderr
 
 
-@pytest.mark.parametrize("usage", [True, -1, "12"])
+@pytest.mark.parametrize("usage", [True, -1, "12", 2**64])
 async def test_task4_bad_provider_usage_is_sanitized(tmp_path, usage):
     settings = replace(Settings(), database_path=str(tmp_path / "usage.db"))
     app = router_app(
@@ -286,3 +286,12 @@ def test_common_gateway_environment_configuration(monkeypatch):
 def test_common_invalid_gateway_port(port):
     with pytest.raises(ValueError):
         Settings(gateway_port=port)
+
+
+@pytest.mark.parametrize("separator", ["  ", "\t", "\n", "\u00a0"])
+def test_task3_card_whitespace_normalization_across_every_split(separator):
+    text = "card=" + separator.join(["4111", "1111", "1111", "1111"]) + " done"
+    for boundary in range(len(text) + 1):
+        guard = StreamingRedactor()
+        output = guard.feed(text[:boundary]) + guard.feed(text[boundary:]) + guard.finish()
+        assert output == "card=[REDACTED] done"

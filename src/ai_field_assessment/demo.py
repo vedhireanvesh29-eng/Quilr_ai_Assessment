@@ -138,7 +138,17 @@ class DemoCluster:
         for log in self.logs:
             log.close()
         if self.directory is not None:
-            self.directory.cleanup()
+            deadline = time.monotonic() + 5
+            while True:
+                try:
+                    self.directory.cleanup()
+                    break
+                except PermissionError:
+                    # Windows can release inherited log handles shortly after
+                    # taskkill returns. Retry only that transient cleanup race.
+                    if time.monotonic() >= deadline:
+                        raise
+                    threading.Event().wait(0.05)
 
     def __exit__(
         self,

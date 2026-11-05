@@ -27,7 +27,9 @@ class HTTPProvider:
             text, model, usage = data["text"], data["model"], data.get("usage_tokens")
             if not isinstance(text, str) or not isinstance(model, str):
                 raise ValueError("Invalid provider output")
-            if usage is not None and (type(usage) is not int or usage < 0):
+            if usage is not None and (
+                type(usage) is not int or not 0 <= usage <= 9223372036854775807
+            ):
                 raise ValueError("Invalid provider usage")
             return Completion(text, model, usage)
         except (ValueError, KeyError) as exc:
