@@ -23,8 +23,6 @@ jobs:
         if: always()
       - name: Measure services and render PNG plots
         if: runner.os == 'Linux'
-        env:
-          EXPORT_REPORT_ASSETS: '1'
         run: uv run --with matplotlib==3.10.7 python scripts/benchmark_report.py
       - uses: actions/upload-artifact@v4
         if: always()
@@ -33,5 +31,10 @@ jobs:
           path: |
             results.xml
             uv.lock
+      - uses: actions/upload-artifact@v4
+        if: always() && runner.os == 'Linux'
+        with:
+          name: measured-performance
+          path: |
             docs/metrics.json
             docs/images/*.png

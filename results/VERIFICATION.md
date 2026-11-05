@@ -1,17 +1,16 @@
-# Verification status
+# Requirements-review verification
 
-The project is verified in GitHub Actions using Python 3.12, the official MCP SDK 2.3.0, and dependencies from `uv.lock`. The final workflow enforces dependency locking, lint, formatting, all tests, and the benchmark.
+The review uses the original four-task assessment and the detailed Python implementation requirements.
 
-Executed locally on November 4, 2026:
+- **83 passed, 0 failed, 0 skipped** on the measured Linux CI run.
+- Local Windows execution: **83 passed**; Ruff lint and all 40 Python files' formatting checks passed.
+- Linux and Windows CI run locked installation, lint, formatting, all tests, and the live verifier.
+- The live verifier launches the real SDK stdio server plus five HTTP processes on isolated ports with a temporary on-disk SQLite database.
+- Real checks cover discovery, customer lookup, simulated refund, viewer/admin policy, streamed PII removal, primary completion, backup completion, and token quota rejection.
+- Child-exit, occupied-port, resource cleanup, released-port, cancellation, stale reconciliation and separate-interpreter persistence regressions are included.
 
-- Six synchronous redaction/JSON-RPC tests: passed, including every split point and 100 seeded randomized layouts.
-- Two Pydantic schema tests: passed using the bundled Pydantic runtime.
-- Independent SQLite connections in three concurrent worker threads: exactly two 20,000-token reservations accepted against a 50,000-token limit; one rejected. Cleanup completed after fixing initialization connection closure.
-- Python compilation of all source, scripts and tests: passed.
-- Redactor processing benchmark: completed; see the JSON and SVG in this directory. Input length is 114,000 characters. These measurements exclude provider/network time.
+[Measured run](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/actions/runs/42109900861)
+[Raw per-task counts and performance samples](../docs/metrics.json)
+[Assessment-to-test mapping](../REQUIREMENTS.md)
 
-GitHub Actions verification on November 4, 2026: **37 tests passed**, including the real stdio subprocess, initialization, discovery, successful tools, strict argument errors, malformed JSON/envelopes, downstream authorization, streaming cancellation, UTF-8 SSE parsing, SQLite concurrency, quotas, and primary/backup failures. Ruff lint and formatting checks passed. Dependency installation with `uv sync --locked` and the benchmark also passed.
-
-The complete suite ran in [GitHub Actions](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/actions). Local asynchronous tests were blocked because the restricted Windows host cannot create asyncio's loopback socket pair; PyPI downloads also failed locally. These host restrictions did not prevent clean-environment CI verification.
-
-A written test is not counted as passing until executed.
+The committed performance plots are dated snapshots from the revision recorded in `docs/metrics.json`. They use controlled mocks and do not claim real-vendor latency. Five inherited duplicate cases were removed before adding independent regressions.

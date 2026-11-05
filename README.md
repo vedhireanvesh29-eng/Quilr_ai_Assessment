@@ -73,18 +73,18 @@ Runtime and test dependencies are pinned in [uv.lock](uv.lock). Matplotlib is in
 
 ## Test results and measurement dashboard
 
-Snapshot from [the measurement run](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/actions/runs/41909973863), taken at **2026-11-04 20:47:59 UTC**, using application revision [b31491b](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/commit/b31491b6c7beca532a279ef9b216ec7dc58bf655). Counts come from the run's actual `results.xml`; measurements come from [docs/metrics.json](docs/metrics.json).
+Snapshot from [the measurement run](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/actions/runs/42109900861), taken at **2026-11-05 21:08:53 UTC**, using application revision [e82e98d](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/commit/e82e98d441a3f57674047cf791b1b053376e9d59). Counts come from the run's actual `results.xml`; measurements come from [docs/metrics.json](docs/metrics.json).
 
 | Component | Passed | Failed | Skipped | Total | Measured result |
 |---|---:|---:|---:|---:|---|
-| MCP server | 3 | 0 | 0 | 3 | 0.229 ms median tool round trip |
-| Security gateway | 7 | 0 | 0 | 7 | 0.479 ms allowed; 0.335 ms blocked |
-| Streaming PII | 10 | 0 | 0 | 10 | 21.500 µs first safe output at 64-character chunks |
-| Model router | 16 | 0 | 0 | 16 | 3.013 s completion after the 3 s timeout |
-| Shared JSON-RPC validation | 1 | 0 | 0 | 1 | Malformed-envelope checks |
-| **All collected tests** | **37** | **0** | **0** | **37** | **Executed with pytest** |
+| MCP server | 3 | 0 | 0 | 3 | 0.228 ms median tool round trip |
+| Security gateway | 12 | 0 | 0 | 12 | 0.486 ms allowed; 0.345 ms blocked |
+| Streaming PII | 35 | 0 | 0 | 35 | 24.100 µs first safe output at 64-character chunks |
+| Model router | 21 | 0 | 0 | 21 | 3.012 s completion after the 3 s timeout |
+| Shared validation and live verification | 12 | 0 | 0 | 12 | Configuration, protocol and actual-process checks |
+| **All collected tests** | **83** | **0** | **0** | **83** | **Executed with pytest** |
 
-This dated baseline included inherited limiter checks under the router class. The requirements-review suite removes those five duplicates and adds independent regression and real-process tests. They are not a code-coverage percentage. Lint, formatting, and locked installation are separate CI checks.
+Counts represent distinct collected pytest cases after removal of five inherited duplicates. The suite includes independent requirement regressions and actual-process verification. They are not a code-coverage percentage. Lint, formatting, and locked installation are separate CI checks.
 
 The tests exercise:
 
@@ -107,9 +107,9 @@ Thirty trials per operation. The MCP measurement uses the official SDK client an
 
 | Operation | Median | P95 | Trials | Backend calls |
 |---|---:|---:|---:|---:|
-| MCP customer tool | 0.229 ms | 0.342 ms | 30 | SDK tool invoked |
-| Viewer, permitted tool | 0.479 ms | 0.728 ms | 30 | 30 |
-| Viewer, blocked admin tool | 0.335 ms | 0.361 ms | 30 | **0** |
+| MCP customer tool | 0.228 ms | 0.315 ms | 30 | SDK tool invoked |
+| Viewer, permitted tool | 0.486 ms | 0.607 ms | 30 | 30 |
+| Viewer, blocked admin tool | 0.345 ms | 0.371 ms | 30 | **0** |
 
 ### Streaming latency and memory
 
@@ -117,7 +117,7 @@ Thirty trials per operation. The MCP measurement uses the official SDK client an
 
 The corpus contains 114,000 characters with repeated email and card values. Each chunk size has seven timed trials. First output means elapsed processing time until `feed()` returns its first nonempty safe string. It is **not network TTFT**.
 
-For 64-character chunks, median complete-input processing took **36.316 ms**, first safe output took **21.500 µs**, and the separate memory pass measured **3.74 KiB** of peak traced allocation. The longest pending candidate in this corpus was **19 characters**, against the configured 4,096-character cap.
+For 64-character chunks, median complete-input processing took **39.348 ms**, first safe output took **24.100 µs**, and the separate memory pass measured **3.74 KiB** of peak traced allocation. The longest pending candidate in this corpus was **19 characters**, against the configured 4,096-character cap.
 
 Memory is measured in a separate `tracemalloc` pass to keep tracing overhead out of the timing results. It excludes the preallocated corpus, interpreter baseline, and native process RSS. The memory plot is not a whole-process memory claim.
 
@@ -137,9 +137,9 @@ The JSON includes each request batch and measured SQLite transaction time. It do
 
 | Scenario | Median completion | P95 | Trials |
 |---|---:|---:|---:|
-| Primary success | 14.253 ms | 122.962 ms | 10 |
-| Primary HTTP 429, then backup | 32.748 ms | 140.539 ms | 10 |
-| Primary exceeds 3000 ms, then backup | 3012.820 ms | 3191.797 ms | 3 |
+| Primary success | 13.213 ms | 13.493 ms | 10 |
+| Primary HTTP 429, then backup | 18.421 ms | 27.393 ms | 10 |
+| Primary exceeds 3000 ms, then backup | 3012.202 ms | 3012.432 ms | 3 |
 
 The providers are asynchronous fixtures: successful primary work waits 10 ms, the 429 fixture waits 10 ms before raising, and the backup waits 5 ms. The timeout fixture waits 5 seconds but is cancelled by the router's actual **3,000 ms** deadline. Measurements include SQLite reservation, scheduling, provider waits, and reconciliation. The primary was cancelled in all three timeout trials before completion was returned.
 
@@ -225,7 +225,7 @@ The HTTP demonstration accepts one JSON-RPC request per POST. It deliberately re
 curl -N http://127.0.0.1:8003/generate -H 'Content-Type: application/json' -d '{"prompt":"Contact john@gmail.com, SSN 123-45-6789, card 4111 1111 1111 1111. Hello!"}'
 ```
 
-The mock provider echoes the prompt as character deltas, splitting all PII. The gateway emits SSE `data: {"text":"..."}` events followed by `data: [DONE]`. Concatenating text deltas gives redacted output in order. SSE framing can differ from upstream because one safe output segment can span multiple input events.
+The mock provider echoes the prompt as character deltas by default, splitting all PII. Direct mock-provider requests may set `chunk_size` and `truncate_after` to control chunk boundaries and simulate an incomplete stream. The gateway emits SSE `data: {"text":"..."}` events followed by `data: [DONE]`. Concatenating text deltas gives redacted output in order. SSE framing can differ from upstream because one safe output segment can span multiple input events.
 
 For the example above, concatenated safe text is:
 
@@ -233,7 +233,7 @@ For the example above, concatenated safe text is:
 Contact [REDACTED], SSN [REDACTED], card [REDACTED]. Hello!
 ```
 
-The redactor buffers candidates until safe delimiters, retains numeric runs across spaces and hyphens, checks cards with Luhn, and replaces detected values with `[REDACTED]`. Oversized candidates fail closed. Errors terminate with a sanitized SSE error event and discard uncommitted text. Cancellation closes the upstream response.
+The redactor retains attached numeric prefixes and normalizes card separators including repeated spaces, tabs, line breaks, and nonbreaking spaces. It buffers candidates until safe delimiters, retains numeric runs across spaces and hyphens, checks cards with Luhn, and replaces detected values with `[REDACTED]`. Oversized candidates fail closed. Errors terminate with a sanitized SSE error event and discard uncommitted text. Cancellation closes the upstream response.
 
 ### Task 4: quota and fallback
 
