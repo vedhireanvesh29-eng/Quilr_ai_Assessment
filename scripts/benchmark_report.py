@@ -69,7 +69,10 @@ def test_counts() -> dict:
                 group = "task2"
         elif "RedactionTests" in classname or "ParserTests" in classname:
             group = "task3"
-        elif "LimiterTests" in classname or "RouterTests" in classname:
+        elif any(
+            part in classname
+            for part in ("LimiterTests", "RouterTests", "test_rate_window", "test_token_accounting")
+        ):
             group = "task4"
         elif "ProtocolTests" in classname:
             group = "common"

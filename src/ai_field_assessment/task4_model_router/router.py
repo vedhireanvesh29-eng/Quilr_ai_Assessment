@@ -2,7 +2,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Protocol
 
-from ai_field_assessment.task4_model_router.rate_limiter import RateLimiter
+from ai_field_assessment.task4_model_router.rate_limiter import MAX_SQLITE_INTEGER, RateLimiter
 
 
 class ProviderError(Exception):
@@ -27,7 +27,7 @@ class TokenCounter(Protocol):
 
 
 class UTF8TokenCounter:
-    """Conservative byte count for byte/BPE providers; replace for other tokenizers."""
+    """Local byte-based estimate, not exact tokenization for arbitrary models."""
 
     def count(self, prompt: str) -> int:
         return len(prompt.encode("utf-8"))
@@ -46,9 +46,15 @@ class ModelRouter:
         self.timeout, self.counter = timeout, counter or UTF8TokenCounter()
 
     async def complete(self, tenant: str, prompt: str, max_output_tokens: int) -> Completion:
-        reserved = self.counter.count(prompt) + max_output_tokens
-        request_id = await self.limiter.reserve(tenant, reserved)
+        estimated_input = self.counter.count(prompt)
+        reserved_output = max_output_tokens
+        reserved = estimated_input + reserved_output
+        reservation = await self.limiter.reserve_context(
+            tenant, reserved, estimated_input=estimated_input, reserved_output=reserved_output
+        )
+        request_id = reservation.request_id
         actual = None
+        reported_usage = None
         fallback = False
         try:
             try:
@@ -67,8 +73,12 @@ class ModelRouter:
             # entire single reservation on fallback, without charging twice.
             observed = self.counter.count(prompt) + self.counter.count(result.text)
             if result.usage_tokens is not None:
-                if type(result.usage_tokens) is not int or result.usage_tokens < 0:
+                if (
+                    type(result.usage_tokens) is not int
+                    or not 0 <= result.usage_tokens <= MAX_SQLITE_INTEGER
+                ):
                     raise ProviderError()
+                reported_usage = result.usage_tokens
                 actual = max(observed, result.usage_tokens, reserved if fallback else 0)
             elif observed > reserved:
                 actual = observed
@@ -76,7 +86,9 @@ class ModelRouter:
         finally:
             # Shield reconciliation from caller cancellation; quota is never refunded on errors.
             task = asyncio.create_task(
-                self.limiter.reconcile(request_id, actual, tenant=tenant, reserved=reserved)
+                self.limiter.reconcile(
+                    request_id, actual, reservation=reservation, reported_usage=reported_usage
+                )
             )
             try:
                 await asyncio.shield(task)
