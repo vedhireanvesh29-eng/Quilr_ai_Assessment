@@ -53,7 +53,7 @@ async def test_task3_bom_and_multibyte_boundaries():
         for value in b'\xef\xbb\xbfdata: {"text":"caf\xc3\xa9"}\r\n\r\n':
             yield bytes([value])
 
-    assert [json.loads(value)["text"] async for value in sse_data(source())] == ["caf�"]
+    assert [json.loads(value)["text"] async for value in sse_data(source())] == ["caf\u00e9"]
 
 
 async def test_task3_mock_chunk_configuration_and_incomplete_stream():
