@@ -99,17 +99,33 @@ class RateLimiter:
         # deliberately keeps that charge; it can never grant additional quota.
         return await asyncio.to_thread(self._reserve, tenant, tokens)
 
-    def _reconcile(self, request_id: str, actual: int | None) -> None:
+    def _reconcile(
+        self,
+        request_id: str,
+        actual: int | None,
+        tenant: str | None = None,
+        reserved: int | None = None,
+    ) -> None:
         if actual is not None and actual < 0:
             raise ValueError("Negative usage")
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
-            connection.execute(
+            changed = connection.execute(
                 "UPDATE events SET actual=?, state='complete', timestamp=? "
                 "WHERE request_id=? AND state IN ('pending','stale')",
                 (actual, self.clock(), request_id),
-            )
+            ).rowcount
+            if changed == 0:
+                # A crashed/slow attempt may finish after stale cleanup. Restore
+                # its charge with caller-retained attribution rather than lose it.
+                if tenant is None or reserved is None:
+                    raise ValueError("Unknown reservation requires recovery context")
+                connection.execute(
+                    "INSERT INTO events VALUES (?,?,?,?,?,'complete') "
+                    "ON CONFLICT(request_id) DO NOTHING",
+                    (request_id, tenant, self.clock(), reserved, actual),
+                )
             connection.commit()
         except BaseException:
             connection.rollback()
@@ -117,5 +133,12 @@ class RateLimiter:
         finally:
             connection.close()
 
-    async def reconcile(self, request_id: str, actual: int | None = None) -> None:
-        await asyncio.to_thread(self._reconcile, request_id, actual)
+    async def reconcile(
+        self,
+        request_id: str,
+        actual: int | None = None,
+        *,
+        tenant: str | None = None,
+        reserved: int | None = None,
+    ) -> None:
+        await asyncio.to_thread(self._reconcile, request_id, actual, tenant, reserved)

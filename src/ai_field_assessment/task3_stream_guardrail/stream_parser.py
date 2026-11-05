@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 
 
 async def sse_data(chunks: AsyncIterator[bytes], limit: int = 65536) -> AsyncIterator[str]:
-    decoder = codecs.getincrementaldecoder("utf-8")("strict")
+    decoder = codecs.getincrementaldecoder("utf-8-sig")("strict")
     line = ""
     data: list[str] = []
     size = 0

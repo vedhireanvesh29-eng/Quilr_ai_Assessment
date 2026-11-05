@@ -47,3 +47,14 @@ Failed/aborted primary attempts may have consumed unknown tokens. Fallback and f
 Development keys are not production identity. Tenant SHA-256 hashes avoid storing raw keys but do not turn low-entropy keys into secrets. HTTP mock services are localhost-only by default. Error payloads never include provider bodies, database paths, or exception traces. Request validation on the router also uses the standard sanitized schema.
 
 SSE events and redaction candidates are bounded; endpoints still need deployment-level request limits and connection quotas. SQLite serializes short write transactions; that is appropriate for this task, with bounded busy waits and no process-local quota source of truth. Database cleanup is indexed but remains shared writer work. High-volume deployments would need measured retention tuning and a centralized store.
+
+
+## Requirements review fixes
+
+See [REQUIREMENTS.md](REQUIREMENTS.md) for the assessment-to-test mapping. Numeric candidates now include attached labels and punctuation before the first digit group; numeric groups following an oversized token remain suppressed. Incomplete SSN-shaped values are redacted at EOF, and the SSE decoder accepts an initial UTF-8 BOM.
+
+The default token counter is also applied to observed output. Reconciliation cannot charge less than observed input plus output under that counter, even if a provider reports a smaller number. A fallback keeps at least the original reservation and records larger reported or observed usage, without creating a second reservation. Late completion after stale cleanup restores its attributed charge. Repeated reconciliation leaves an already completed event unchanged. UTF-8 byte counting remains conservative and replaceable; real-provider tokenizer/framing compatibility is still an explicit deployment requirement.
+
+The launcher probes ports before starting, waits for readiness, monitors every child, returns nonzero on startup failure, and closes its subprocesses. Windows shutdown terminates the owned process tree because venv Python can act as a redirector. The live verifier uses isolated ports, a temporary on-disk database, and the official SDK client against a real stdio subprocess. It then makes real TCP HTTP calls. Local-only clients do not consult external proxy variables; clients with remote configured endpoints continue to honor them.
+
+Gateway failure logs record only standardized codes, request IDs and HTTP statuses. They do not log prompts, API keys, upstream response bodies or raw exception messages. Gateway host and base port are configurable through `GATEWAY_HOST` and `GATEWAY_PORT`, or demo CLI flags.

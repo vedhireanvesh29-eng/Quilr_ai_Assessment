@@ -28,7 +28,7 @@ async def validate_tool_call(ctx, call_next):
     """Public v2 middleware refuses malformed tool calls with top-level -32602."""
     if ctx.method == "tools/call":
         params = ctx.params
-        if not isinstance(params, dict):
+        if not isinstance(params, dict) or not isinstance(params.get("name"), str):
             raise MCPError(code=-32602, message="Invalid params")
         schema = {"get_customer_record": CustomerInput, "trigger_refund": RefundInput}.get(
             params.get("name")

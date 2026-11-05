@@ -14,14 +14,19 @@ class Input(BaseModel):
     model_config = ConfigDict(extra="forbid")
     prompt: str
     max_output_tokens: int = Field(default=64, gt=0)
+    chunk_size: int = Field(default=1, ge=1, le=1024)
+    truncate_after: int | None = Field(default=None, ge=0)
 
 
 @app.post("/generate")
 async def generate(body: Input):
     async def chunks():
         # Character deltas deliberately split every sensitive pattern.
-        for char in body.prompt:
-            yield "data: " + json.dumps({"text": char}, ensure_ascii=False) + "\n\n"
+        for index, offset in enumerate(range(0, len(body.prompt), body.chunk_size)):
+            if body.truncate_after is not None and index >= body.truncate_after:
+                return  # Deterministic incomplete upstream stream fixture.
+            text = body.prompt[offset : offset + body.chunk_size]
+            yield "data: " + json.dumps({"text": text}, ensure_ascii=False) + "\n\n"
             await asyncio.sleep(0)
         yield "data: [DONE]\n\n"
 

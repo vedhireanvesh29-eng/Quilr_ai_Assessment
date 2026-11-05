@@ -1,11 +1,14 @@
 """Small immutable configuration object. Environment is read at application creation."""
 
+import math
 import os
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class Settings:
+    gateway_host: str = "127.0.0.1"
+    gateway_port: int = 8000
     mcp_server_name: str = "Assessment Customers"
     downstream_mcp_url: str = "http://127.0.0.1:8001/mcp"
     admin_token: str = "dev-admin"
@@ -20,7 +23,14 @@ class Settings:
     log_level: str = "INFO"
 
     def __post_init__(self) -> None:
-        if self.primary_timeout <= 0 or self.tokens_per_minute <= 0 or self.pii_buffer_size < 32:
+        if not self.gateway_host or not 1024 <= self.gateway_port <= 65531:
+            raise ValueError("Invalid gateway host or base port")
+        if (
+            not math.isfinite(self.primary_timeout)
+            or self.primary_timeout <= 0
+            or self.tokens_per_minute <= 0
+            or self.pii_buffer_size < 32
+        ):
             raise ValueError("Timeout, token limit and buffer size must be positive")
         if not self.admin_token or not self.viewer_token or self.admin_token == self.viewer_token:
             raise ValueError("Mock credentials must be nonempty and distinct")

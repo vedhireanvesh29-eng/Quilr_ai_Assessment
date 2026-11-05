@@ -72,6 +72,9 @@ async def test_stdio_lifecycle_discovery_validation_and_tools():
             result = await receive(process)
             assert "result" in result and not result["result"].get("isError", False)
         for name, arguments in [
+            ([], {}),
+            ({}, {}),
+            (None, {}),
             ("get_customer_record", {"customer_id": "invalid"}),
             ("get_customer_record", {"customer_id": "CUST-12345", "extra": 1}),
             ("unknown", {}),

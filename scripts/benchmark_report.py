@@ -54,7 +54,11 @@ def test_counts() -> dict:
     }
     for case in ET.parse("results.xml").getroot().iter("testcase"):
         classname, name = case.get("classname", ""), case.get("name", "")
-        if "test_schemas" in classname or "test_mcp_stdio" in classname:
+        if "test_requirement_gaps" in classname or "test_live_demo" in classname:
+            group = name.split("_")[1]
+            if group not in groups:
+                raise ValueError(f"Unclassified regression: {name}")
+        elif "test_schemas" in classname or "test_mcp_stdio" in classname:
             group = "task1"
         elif "test_http_integration" in classname:
             if name.startswith(("test_streaming", "test_malformed_sse", "test_disconnect")):

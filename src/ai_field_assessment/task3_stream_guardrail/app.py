@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from ai_field_assessment.common.http import use_environment_proxy
 from ai_field_assessment.config import Settings
 from ai_field_assessment.task3_stream_guardrail.redactor import StreamingRedactor
 from ai_field_assessment.task3_stream_guardrail.stream_parser import sse_data
@@ -25,7 +26,11 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        async with httpx.AsyncClient(timeout=30, transport=transport) as client:
+        async with httpx.AsyncClient(
+            timeout=30,
+            transport=transport,
+            trust_env=use_environment_proxy(settings.llm_stream_url),
+        ) as client:
             app.state.client = client
             yield
 

@@ -4,6 +4,12 @@
 
 A runnable Python assessment covering MCP tools, MCP authorization, streaming PII protection, and resilient LLM routing. All four tasks run locally with simulated customers, refunds, credentials, and providers. No paid LLM API key is required.
 
+## Requirements review
+
+The four-task assessment has been checked against its detailed implementation text. [REQUIREMENTS.md](REQUIREMENTS.md) maps each requirement to code and executable evidence, including the newly fixed PII prefix leak, malformed input cases, conservative usage reconciliation, late stale-event completion, and real stdio/TCP verification.
+
+`scripts/verify_all.py` now starts and stops isolated real services; it is not a wrapper around pytest. `scripts/run_demo.py` checks startup and exits on a child failure. The launcher accepts `--host` and `--base-port`; the corresponding environment settings are `GATEWAY_HOST` and `GATEWAY_PORT`. Local-only mock clients avoid external proxy settings.
+
 ## Project overview
 
 | Task | What it demonstrates | Main implementation |
@@ -78,7 +84,7 @@ Snapshot from [the measurement run](https://github.com/vedhireanvesh29-eng/Quilr
 | Shared JSON-RPC validation | 1 | 0 | 0 | 1 | Malformed-envelope checks |
 | **All collected tests** | **37** | **0** | **0** | **37** | **Executed with pytest** |
 
-Counts represent collected pytest cases, including shared limiter checks collected under the router test class. They are not a code-coverage percentage. Lint, formatting, and locked installation are separate CI checks.
+This dated baseline included inherited limiter checks under the router class. The requirements-review suite removes those five duplicates and adds independent regression and real-process tests. They are not a code-coverage percentage. Lint, formatting, and locked installation are separate CI checks.
 
 The tests exercise:
 
@@ -243,7 +249,7 @@ Response fragment for this simulated fallback:
 
 The complete response also reports `usage_tokens`. A prompt beginning `[timeout]` makes the mock primary exceed the default three-second timeout. `[error]` returns an upstream 500 and does not fall back. Other prompts use the primary.
 
-Quota defaults to 50,000 tokens per tenant over a rolling 60 seconds. Before forwarding, an atomic SQLite transaction reserves UTF-8 input bytes plus maximum output tokens. The byte counter is conservative for the mock and byte-based tokenizers; replace the counter for a provider with different tokenization. Primary success reconciles to reported usage; fallback, failures and cancellations retain the single full reservation. Tenant keys are hashed before storage. Development tenant keys identify tenants without authenticating them.
+Quota defaults to 50,000 tokens per tenant over a rolling 60 seconds. Before forwarding, an atomic SQLite transaction reserves UTF-8 input bytes plus maximum output tokens. The byte counter is conservative for the mock and byte-based tokenizers; replace the counter for a provider with different tokenization. Primary success reconciles to at least observed input/output under the configured counter. Fallback retains at least one full reservation and any larger observed or reported charge; unknown failures retain the reservation. Tenant keys are hashed before storage. Development tenant keys identify tenants without authenticating them.
 
 ```json
 {"error":{"code":"RATE_LIMIT_EXCEEDED","message":"Unable to process this request","request_id":"generated-id"}}
@@ -274,6 +280,7 @@ See [DESIGN.md](DESIGN.md) for protocol compatibility, stale reservations, error
 
 | Variable | Default |
 |---|---|
+| `GATEWAY_HOST`, `GATEWAY_PORT` | `127.0.0.1`, `8000` (demo host and base port) |
 | `MCP_SERVER_NAME` | `Assessment Customers` |
 | `DOWNSTREAM_MCP_URL` | `http://127.0.0.1:8001/mcp` |
 | `ADMIN_TOKEN`, `VIEWER_TOKEN` | `dev-admin`, `dev-viewer` |
@@ -308,7 +315,7 @@ The committed README dashboard is a dated snapshot. Regenerating the report upda
 | `src/ai_field_assessment/` | Four services, shared configuration, and validation |
 | `tests/` | Unit and integration tests |
 | `scripts/run_demo.py` | Launch the five localhost HTTP processes |
-| `scripts/verify_all.py` | Run the complete test suite |
+| `scripts/verify_all.py` | Live stdio/TCP verification with isolated services and automatic cleanup |
 | `scripts/benchmark_report.py` | Generate task-level counts, measurements, and PNGs |
 | `docs/metrics.json` | Raw measured samples and provenance |
 | `docs/images/` | README performance figures |

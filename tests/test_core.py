@@ -77,7 +77,7 @@ class ParserTests(unittest.IsolatedAsyncioTestCase):
                 _ = [data async for data in sse_data(source(), limit=32)]
 
 
-class LimiterTests(unittest.IsolatedAsyncioTestCase):
+class LimiterFixture:
     async def asyncSetUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.path = str(Path(self.directory.name) / "usage.db")
@@ -88,6 +88,8 @@ class LimiterTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         self.directory.cleanup()
 
+
+class LimiterTests(LimiterFixture, unittest.IsolatedAsyncioTestCase):
     async def test_atomic_independent_connections(self):
         others = [RateLimiter(self.path, limit=50, clock=lambda: self.now) for _ in range(3)]
         results = await asyncio.gather(
@@ -147,7 +149,7 @@ class FakeProvider:
         return Completion("ok", self.mode, 2)
 
 
-class RouterTests(LimiterTests):
+class RouterTests(LimiterFixture, unittest.IsolatedAsyncioTestCase):
     async def test_primary_success(self):
         primary, backup = FakeProvider(), FakeProvider("backup")
         router = ModelRouter(self.limiter, primary, backup, timeout=0.01)

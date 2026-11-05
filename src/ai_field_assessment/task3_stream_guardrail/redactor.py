@@ -50,6 +50,7 @@ class StreamingRedactor:
         self.numeric = False
         self.dropping = False
         self.high_water = 0
+        self.drop_gap = False
 
     def feed(self, text: str) -> str:
         output: list[str] = []
@@ -57,11 +58,15 @@ class StreamingRedactor:
             digit = char in "0123456789"
             number_char = digit or char == "-" or char.isspace()
             if self.dropping:
-                if self.numeric and number_char:
+                # An oversized token may end in the first group of a card.
+                # Suppress following numeric groups as well as the token itself.
+                if char.isspace():
+                    self.drop_gap = True
                     continue
-                if not self.numeric and not char.isspace():
+                if not self.drop_gap or digit or char == "-":
                     continue
                 self.dropping = False
+                self.drop_gap = False
                 self.numeric = False
             if self.numeric and not number_char:
                 if any(c.isspace() for c in self.pending):
@@ -69,10 +74,15 @@ class StreamingRedactor:
                     self.pending = ""
                 self.numeric = False
             if char.isspace() and not self.numeric:
-                output.append(redact(self.pending))
-                output.append(char)
-                self.pending = ""
-                continue
+                # Prefixes and punctuation do not terminate a trailing numeric
+                # candidate: card=4111 1111 ... must remain one candidate.
+                if "@" not in self.pending and re.search(r"[0-9][0-9-]*$", self.pending):
+                    self.numeric = True
+                else:
+                    output.append(redact(self.pending))
+                    output.append(char)
+                    self.pending = ""
+                    continue
             if not self.pending:
                 self.numeric = digit
             self.pending += char
@@ -81,11 +91,14 @@ class StreamingRedactor:
                 output.append(MARKER)
                 self.pending = ""
                 self.dropping = True
+                self.drop_gap = False
         return "".join(output)
 
     def finish(self) -> str:
         output = redact(self.pending)
+        output = re.sub(r"(?<![0-9])[0-9]{3}-[0-9]{0,2}(?:-[0-9]{0,3})?$", MARKER, output)
         self.pending = ""
         self.numeric = False
         self.dropping = False
+        self.drop_gap = False
         return output

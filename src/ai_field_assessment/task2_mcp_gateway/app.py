@@ -6,6 +6,7 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
+from ai_field_assessment.common.http import use_environment_proxy
 from ai_field_assessment.common.jsonrpc import RPCError, error, validate_request
 from ai_field_assessment.config import Settings
 
@@ -16,7 +17,10 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         async with httpx.AsyncClient(
-            timeout=10, transport=transport, follow_redirects=False
+            timeout=10,
+            transport=transport,
+            follow_redirects=False,
+            trust_env=use_environment_proxy(settings.downstream_mcp_url),
         ) as client:
             app.state.client = client
             yield
@@ -27,7 +31,7 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
     async def proxy(request: Request):
         header = request.headers.get("authorization", "").split()
         role = None
-        if len(header) == 2 and header[0].lower() == "bearer":
+        if len(header) == 2 and header[0].lower() == "bearer" and header[1].isascii():
             if secrets.compare_digest(header[1], settings.admin_token):
                 role = "admin"
             elif secrets.compare_digest(header[1], settings.viewer_token):
@@ -35,8 +39,12 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         if role is None:
             return JSONResponse(error(None, -32000, "Authentication required"), status_code=401)
         try:
-            body = await request.json()
-        except (json.JSONDecodeError, UnicodeDecodeError):
+
+            def reject_constant(value: str) -> None:
+                raise ValueError("Non-finite JSON number")
+
+            body = json.loads(await request.body(), parse_constant=reject_constant)
+        except (ValueError, UnicodeDecodeError):
             return JSONResponse(error(None, -32700, "Parse error"))
         try:
             body = validate_request(body)

@@ -65,12 +65,19 @@ class ModelRouter:
                     result = await self.backup.complete(prompt, max_output_tokens)
             # Failed attempts can consume unknown provider tokens. Retain the
             # entire single reservation on fallback, without charging twice.
-            if not fallback and result.usage_tokens is not None:
-                actual = result.usage_tokens
+            observed = self.counter.count(prompt) + self.counter.count(result.text)
+            if result.usage_tokens is not None:
+                if type(result.usage_tokens) is not int or result.usage_tokens < 0:
+                    raise ProviderError()
+                actual = max(observed, result.usage_tokens, reserved if fallback else 0)
+            elif observed > reserved:
+                actual = observed
             return result
         finally:
             # Shield reconciliation from caller cancellation; quota is never refunded on errors.
-            task = asyncio.create_task(self.limiter.reconcile(request_id, actual))
+            task = asyncio.create_task(
+                self.limiter.reconcile(request_id, actual, tenant=tenant, reserved=reserved)
+            )
             try:
                 await asyncio.shield(task)
             except asyncio.CancelledError:

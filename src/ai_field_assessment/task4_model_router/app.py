@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import sqlite3
 from contextlib import asynccontextmanager
 from uuid import uuid4
@@ -9,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from ai_field_assessment.common.http import use_environment_proxy
 from ai_field_assessment.config import Settings
 from ai_field_assessment.task4_model_router.providers import HTTPProvider
 from ai_field_assessment.task4_model_router.rate_limiter import RateLimiter, RateLimitExceeded
@@ -22,12 +24,16 @@ class CompletionInput(BaseModel):
 
 
 def failure(code: str, status: int) -> JSONResponse:
+    request_id = uuid4().hex
+    logging.getLogger(__name__).warning(
+        "gateway_failure code=%s request_id=%s status=%s", code, request_id, status
+    )
     return JSONResponse(
         {
             "error": {
                 "code": code,
                 "message": "Unable to process this request",
-                "request_id": uuid4().hex,
+                "request_id": request_id,
             }
         },
         status_code=status,
@@ -42,7 +48,11 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         limiter = RateLimiter(settings.database_path, settings.tokens_per_minute)
         await limiter.initialize()
         async with httpx.AsyncClient(
-            timeout=settings.primary_timeout, transport=transport
+            timeout=settings.primary_timeout,
+            transport=transport,
+            trust_env=use_environment_proxy(
+                settings.primary_provider_url, settings.backup_provider_url
+            ),
         ) as client:
             app.state.router = ModelRouter(
                 limiter,

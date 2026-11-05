@@ -1,49 +1,37 @@
-"""Start the mock providers and three independent HTTP gateways."""
+"""Launch all localhost HTTP services with readiness checks and cleanup."""
 
-import subprocess
+import argparse
+import signal
 import sys
 
-SERVICES = [
-    ("task2_mcp_gateway.mock_mcp_server", 8001),
-    ("task3_stream_guardrail.mock_llm_provider", 8002),
-    ("task2_mcp_gateway.app", 8000),
-    ("task3_stream_guardrail.app", 8003),
-    ("task4_model_router.app", 8004),
-]
+from ai_field_assessment.config import Settings
+from ai_field_assessment.demo import DemoCluster
 
 
-def main() -> None:
-    processes = []
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    settings = Settings.from_env()
+    parser.add_argument("--base-port", type=int, default=settings.gateway_port)
+    parser.add_argument("--host", default=settings.gateway_host)
+    args = parser.parse_args()
+
+    def stop(signum, frame):
+        raise KeyboardInterrupt()
+
+    signal.signal(signal.SIGTERM, stop)
     try:
-        for module, port in SERVICES:
-            processes.append(
-                subprocess.Popen(
-                    [
-                        sys.executable,
-                        "-m",
-                        "uvicorn",
-                        f"ai_field_assessment.{module}:app",
-                        "--host",
-                        "127.0.0.1",
-                        "--port",
-                        str(port),
-                    ]
-                )
-            )
-        print("Demo services starting on localhost:8000-8004. Ctrl+C stops all services.")
-        processes[-1].wait()
+        with DemoCluster(base_port=args.base_port, host=args.host) as cluster:
+            for name in cluster.ports:
+                print(f"{name}: {cluster.url(name)}", flush=True)
+            print("All demo services ready. Ctrl+C stops the cluster.", flush=True)
+            cluster.wait()
     except KeyboardInterrupt:
-        pass
-    finally:
-        for process in processes:
-            process.terminate()
-        for process in processes:
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+        return 0
+    except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+        print(f"Demo startup failed: {exc}", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
