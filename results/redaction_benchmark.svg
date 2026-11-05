@@ -5,17 +5,17 @@
 <text x="30" y="60" font-size="13">Median of 3 runs; 114,000 input characters; excludes network time</text>
 <text x="30" y="108" font-size="13">1 chars/chunk</text>
 <rect x="155" y="90" width="450.00" height="25" rx="3" fill="#2563eb"/>
-<text x="615.00" y="108" font-size="13">63.481 ms</text>
+<text x="615.00" y="108" font-size="13">85.867 ms</text>
 <text x="30" y="151" font-size="13">16 chars/chunk</text>
-<rect x="155" y="133" width="311.66" height="25" rx="3" fill="#2563eb"/>
-<text x="476.66" y="151" font-size="13">43.966 ms</text>
+<rect x="155" y="133" width="324.78" height="25" rx="3" fill="#2563eb"/>
+<text x="489.78" y="151" font-size="13">61.973 ms</text>
 <text x="30" y="194" font-size="13">64 chars/chunk</text>
-<rect x="155" y="176" width="291.39" height="25" rx="3" fill="#2563eb"/>
-<text x="456.39" y="194" font-size="13">41.106 ms</text>
+<rect x="155" y="176" width="319.38" height="25" rx="3" fill="#2563eb"/>
+<text x="484.38" y="194" font-size="13">60.942 ms</text>
 <text x="30" y="237" font-size="13">256 chars/chunk</text>
-<rect x="155" y="219" width="288.73" height="25" rx="3" fill="#2563eb"/>
-<text x="453.73" y="237" font-size="13">40.731 ms</text>
+<rect x="155" y="219" width="372.76" height="25" rx="3" fill="#2563eb"/>
+<text x="537.76" y="237" font-size="13">71.129 ms</text>
 <text x="30" y="280" font-size="13">1024 chars/chunk</text>
-<rect x="155" y="262" width="290.73" height="25" rx="3" fill="#2563eb"/>
-<text x="455.73" y="280" font-size="13">41.013 ms</text>
+<rect x="155" y="262" width="313.34" height="25" rx="3" fill="#2563eb"/>
+<text x="478.34" y="280" font-size="13">59.791 ms</text>
 </g></svg>
