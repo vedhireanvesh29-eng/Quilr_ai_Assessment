@@ -12,7 +12,7 @@ The SDK negotiates protocol compatibility. Tests cover the legacy initialize/ini
 
 Task 2 maps configured Bearer credentials to roles before parsing JSON. Viewer discovery remains transparent, including administrative tools. Viewer `admin_` calls are rejected before forwarding, preserving the request ID.
 
-The destination comes from server configuration. Redirects are disabled, and incoming headers are not copied to the backend. A lifespan HTTPX client reuses connections. This is a single-request JSON proxy around a mock endpoint; it does not implement stateful MCP Streamable HTTP sessions.
+The destination comes from server configuration. Redirects are disabled, and incoming headers are not copied to the backend. A lifespan HTTPX client reuses connections. Upstream HTTP errors return a sanitized gateway error even when their body is a valid JSON-RPC envelope. Successful HTTP responses retain their validated protocol content. This is a single-request JSON proxy around a mock endpoint; it does not implement stateful MCP Streamable HTTP sessions.
 
 ## Streaming state and resource use
 

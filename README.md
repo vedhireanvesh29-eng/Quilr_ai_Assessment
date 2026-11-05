@@ -74,7 +74,11 @@ npx @modelcontextprotocol/inspector uv run assessment-mcp
 
 ## Task 2: MCP security gateway
 
-The gateway authenticates the configured Bearer token before parsing the request. `dev-admin` permits administrative calls. `dev-viewer` can discover all tools and call ordinary tools, but cannot invoke names beginning `admin_`. Discovery remains unchanged.
+The gateway authenticates the configured Bearer token before parsing the request. `dev-admin` permits administrative calls. `dev-viewer` can discover all tools and call ordinary tools, but cannot invoke names beginning `admin_`. Discovery remains unchanged. An allowed viewer call uses the same endpoint:
+
+```sh
+curl -s http://127.0.0.1:8000/mcp -H 'Authorization: Bearer dev-viewer' -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"get_customer_record","arguments":{}}}'
+```
 
 ```sh
 curl -s http://127.0.0.1:8000/mcp -H 'Authorization: Bearer dev-viewer' -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"admin_reset_key","arguments":{}}}'
@@ -86,7 +90,7 @@ The response is returned before any backend call:
 {"jsonrpc":"2.0","id":5,"error":{"code":-32001,"message":"Unauthorized Tool Call"}}
 ```
 
-Missing or invalid credentials receive HTTP 401. Allowed requests use a fixed server-configured destination; incoming authorization headers are not forwarded. Downstream failures produce sanitized gateway errors. This endpoint supports one JSON-RPC request per POST, without batches, notifications, or MCP HTTP sessions.
+Missing or invalid credentials receive HTTP 401. Allowed requests use a fixed server-configured destination; incoming authorization headers are not forwarded. Downstream transport failures and HTTP error responses produce sanitized gateway errors. This endpoint supports one JSON-RPC request per POST, without batches, notifications, or MCP HTTP sessions.
 
 ## Task 3: streaming PII guardrail
 
@@ -166,6 +170,17 @@ The launcher checks occupied ports, waits for readiness, monitors child processe
 | Mock providers | `http://127.0.0.1:8002/generate`, `/primary`, `/backup` |
 | Streaming guardrail | `http://127.0.0.1:8003/generate` |
 | Model router | `http://127.0.0.1:8004/completions` |
+
+To start a service on its own, run its command in a separate terminal:
+
+| Service | Command |
+|---|---|
+| MCP server | `uv run assessment-mcp` |
+| Security gateway | `uv run uvicorn ai_field_assessment.task2_mcp_gateway.app:app --port 8000` |
+| Mock MCP backend | `uv run uvicorn ai_field_assessment.task2_mcp_gateway.mock_mcp_server:app --port 8001` |
+| Mock LLM providers | `uv run uvicorn ai_field_assessment.task3_stream_guardrail.mock_llm_provider:app --port 8002` |
+| Streaming gateway | `uv run uvicorn ai_field_assessment.task3_stream_guardrail.app:app --port 8003` |
+| Model router | `uv run uvicorn ai_field_assessment.task4_model_router.app:app --port 8004` |
 
 HTTP services expose `/docs`. Use `--host` and `--base-port` on the launcher to change binding. [.env.example](.env.example) lists upstream URLs, mock credentials, timeouts, quota, database path, and buffer settings. Export variables in your shell; the application does not load this file automatically. Default SQLite storage is `data/usage.db`.
 

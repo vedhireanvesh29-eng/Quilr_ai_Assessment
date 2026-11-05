@@ -300,3 +300,30 @@ def test_task3_card_whitespace_normalization_across_every_split(separator):
         guard = StreamingRedactor()
         output = guard.feed(text[:boundary]) + guard.feed(text[boundary:]) + guard.finish()
         assert output == "card=[REDACTED] done"
+
+
+async def test_task2_http_failure_cannot_forward_private_jsonrpc_details():
+    app = gateway(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                500,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 7,
+                    "error": {"code": -32603, "message": "private database credentials"},
+                },
+            )
+        )
+    )
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/mcp",
+                headers={"Authorization": "Bearer dev-viewer"},
+                json={"jsonrpc": "2.0", "id": 7, "method": "tools/list"},
+            )
+    assert response.status_code == 502
+    assert response.json()["id"] == 7
+    assert "private" not in response.text

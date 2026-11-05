@@ -66,6 +66,10 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
             return JSONResponse(
                 error(request_id, -32003, "Downstream unavailable"), status_code=502
             )
+        if upstream.status_code >= 400:
+            return JSONResponse(
+                error(request_id, -32003, "Downstream unavailable"), status_code=502
+            )
         # Only JSON is supported by this intentionally narrow mock transport.
         try:
             result = upstream.json()

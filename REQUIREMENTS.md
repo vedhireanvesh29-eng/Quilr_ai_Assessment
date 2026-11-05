@@ -10,7 +10,7 @@ Paths below are relative to [src/ai_field_assessment](src/ai_field_assessment) a
 | Customer lookup and simulated decimal refunds | `task1_mcp_server/customer_service.py` | Both tools over stdio; unknown-customer tool error |
 | Bearer roles; stop viewer admin calls before forwarding | `task2_mcp_gateway/app.py` | Role tests; backend spy and real TCP authorization |
 | Transparent discovery and request IDs | Proxy and `common/jsonrpc.py` | Discovery comparison; ID zero regression |
-| Malformed JSON, tokens and downstream failure handling | Proxy validation and lifespan client | Nonfinite numbers, non-ASCII token, timeout and connection fixtures |
+| Malformed JSON, tokens and downstream failure handling | Proxy validation and lifespan client | Nonfinite numbers, non-ASCII token, timeout, connection, and private JSON-RPC HTTP-error fixtures |
 | Server-owned destination and no copied credentials | Explicit JSON-only upstream request | Forwarding spy and proxy source |
 | Cross-chunk emails, SSNs and Luhn-valid cards | `task3_stream_guardrail/redactor.py` | Every split point, seeded layouts, prefixes, punctuation, whitespace separators |
 | Bounded candidate memory and fail-closed overflow | Candidate cap and numeric continuation suppression | Long candidate, oversized prefix and large safe-stream cases |
