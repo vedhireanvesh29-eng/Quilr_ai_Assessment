@@ -80,7 +80,21 @@ class RateLimiter:
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         connection = self._connect()
         try:
-            connection.execute("PRAGMA journal_mode=WAL")
+            # SQLite can return BUSY immediately for concurrent WAL conversion,
+            # even with busy_timeout set. Retry only lock contention, bounded
+            # independently of the persisted wall clock used for quota.
+            deadline = time.monotonic() + 5
+            while True:
+                try:
+                    connection.execute("PRAGMA journal_mode=WAL")
+                    break
+                except sqlite3.OperationalError as exc:
+                    code = getattr(exc, "sqlite_errorcode", 0) & 0xFF
+                    if code not in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+                        raise
+                    if time.monotonic() >= deadline:
+                        raise
+                    time.sleep(0.01)
             connection.execute("BEGIN IMMEDIATE")
             version = connection.execute("PRAGMA user_version").fetchone()[0]
             if version > 2:

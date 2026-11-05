@@ -2,6 +2,7 @@
 
 import asyncio
 import sqlite3
+import threading
 
 import pytest
 
@@ -190,3 +191,38 @@ async def test_future_schema_is_not_downgraded(tmp_path):
         await RateLimiter(path).initialize()
     with sqlite3.connect(path) as connection:
         assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+
+
+async def test_wal_initialization_retries_real_lock_contention(tmp_path):
+    path = str(tmp_path / "locked.db")
+    legacy_database(path)
+    busy_seen = threading.Event()
+
+    class ObservedConnection(sqlite3.Connection):
+        def execute(self, sql, parameters=()):
+            try:
+                return super().execute(sql, parameters)
+            except sqlite3.OperationalError:
+                if sql == "PRAGMA journal_mode=WAL":
+                    busy_seen.set()
+                raise
+
+    class ImmediateBusyLimiter(RateLimiter):
+        def _connect(self):
+            return sqlite3.connect(
+                self.path, timeout=0, isolation_level=None, factory=ObservedConnection
+            )
+
+    blocker = sqlite3.connect(path, isolation_level=None)
+    blocker.execute("BEGIN EXCLUSIVE")
+    task = asyncio.create_task(ImmediateBusyLimiter(path).initialize())
+    try:
+        assert await asyncio.to_thread(busy_seen.wait, 3), "WAL conversion never encountered lock"
+    finally:
+        blocker.rollback()
+        blocker.close()
+    await asyncio.wait_for(task, 6)
+    assert event(path, "done")["reserved_at"] == 990
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
