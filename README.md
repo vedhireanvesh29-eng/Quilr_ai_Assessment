@@ -1,329 +1,245 @@
-# Quilr AI Field Developer Assessment
+# AI Field Developer Assessment — Python
 
-[![Assessment checks](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/actions/workflows/ci.yml/badge.svg)](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/actions/workflows/ci.yml)
+Four small services demonstrate MCP tools, tool authorization, streaming PII redaction, and model routing with persistent tenant quotas. Customer data, credentials, refunds, and model providers are simulated. No paid API key is needed.
 
-A runnable Python assessment covering MCP tools, MCP authorization, streaming PII protection, and resilient LLM routing. All four tasks run locally with simulated customers, refunds, credentials, and providers. No paid LLM API key is required.
+| Task | Behavior |
+|---|---|
+| MCP server | Discover and call two strictly validated customer tools over stdio |
+| Security gateway | Forward JSON-RPC requests and stop unauthorized `admin_` calls |
+| Streaming guardrail | Redact emails, SSNs, and Luhn-valid cards across SSE chunk boundaries |
+| Model router | Reserve quota in SQLite, call the primary, and use one bounded fallback |
 
-## Requirements review
+## Architecture
 
-The four-task assessment has been checked against its detailed implementation text. [REQUIREMENTS.md](REQUIREMENTS.md) maps each requirement to code and executable evidence, including the newly fixed PII prefix leak, malformed input cases, conservative usage reconciliation, late stale-event completion, and real stdio/TCP verification.
-
-`scripts/verify_all.py` now starts and stops isolated real services; it is not a wrapper around pytest. `scripts/run_demo.py` checks startup and exits on a child failure. The launcher accepts `--host` and `--base-port`; the corresponding environment settings are `GATEWAY_HOST` and `GATEWAY_PORT`. Local-only mock clients avoid external proxy settings.
-
-## Project overview
-
-| Task | What it demonstrates | Main implementation |
-|---|---|---|
-| 1. Custom MCP server | Strict tool inputs, discovery, JSON-RPC errors, and isolated stdio | `task1_mcp_server/` |
-| 2. MCP security gateway | Bearer roles, transparent discovery, and blocking `admin_` calls before forwarding | `task2_mcp_gateway/` |
-| 3. Streaming PII guardrail | Incremental SSE parsing and redaction across arbitrary chunk boundaries | `task3_stream_guardrail/` |
-| 4. Model router | SQLite sliding-window quotas, atomic reservations, and one bounded fallback | `task4_model_router/` |
-
-The repository contains the source, deterministic mocks, unit and integration tests, a dependency lockfile, demo scripts, raw measurements, and PNG figures.
-
-## System architecture
-
-These are independent assessment services. The security proxy uses its own HTTP mock backend; it does not automatically connect to the stdio server.
+The tasks are independent. Task 2 uses an HTTP mock backend; it does not wrap the Task 1 stdio connection. Task 3 streams responses, while Task 4 returns a single completion.
 
 ```mermaid
 flowchart TB
-    subgraph T1["Task 1: local MCP tools"]
-        Host["MCP host / Inspector"] <-->|"JSON-RPC over stdio"| SDK["Official SDK and strict validation"]
-        SDK --> Customer["Simulated customer and refund service"]
+    subgraph Tools["Tools and authorization"]
+        Host["MCP host"] <-->|stdio| MCP["SDK tool server"]
+        MCP --> Customers["Simulated customer service"]
+        Agent["HTTP client"] --> Gateway["Bearer role check"]
+        Gateway -->|allowed| Backend["Mock MCP backend"]
+        Gateway -->|denied| Error["JSON-RPC -32001"]
     end
-    subgraph T2["Task 2: HTTP MCP security proxy"]
-        Agent["Agent client"] -->|"Bearer token and JSON-RPC"| Gateway["Role and tool authorization"]
-        Gateway -->|"Allowed requests"| MockMCP["Mock downstream MCP endpoint"]
-        Gateway -->|"Unauthorized admin call"| Denied["JSON-RPC error -32001"]
-    end
-```
-
-```mermaid
-flowchart TB
-    subgraph T3["Task 3: streamed response protection"]
-        Client["Generation client"] --> Guard["SSE parser and bounded PII redactor"]
-        Guard <-->|"Streamed text deltas"| StreamProvider["Mock streaming provider"]
-        Guard -->|"Safe SSE deltas"| Client
-    end
-    subgraph T4["Task 4: completion routing"]
-        Caller["Tenant completion client"] --> Router["Token reservation and model router"]
-        Router <-->|"Atomic transactions"| Database["SQLite on disk"]
-        Router -->|"First attempt"| Primary["Primary provider"]
-        Router -->|"429 or 3000 ms timeout"| Backup["Backup provider"]
+    subgraph Generation["Generation services"]
+        Client["Generation client"] --> Guard["SSE parser and PII buffer"]
+        Guard <-->|deltas| Stream["Streaming mock"]
+        Caller["Tenant client"] --> Router["Quota and model router"]
+        Router <--> Ledger["SQLite ledger"]
+        Router --> Primary["Primary mock"]
+        Router -->|429 or timeout| Backup["Backup mock"]
     end
 ```
-
-Task 4 returns a single completion rather than restarting a partially delivered stream. Task 3 performs streaming independently.
 
 ## Technology stack
 
-| Technology | Use |
+| Technology | Purpose |
 |---|---|
-| Python 3.11+ | Type hints, standard-library utilities, executable services |
-| Official MCP Python SDK v2 | Tool registration, protocol lifecycle, framing, and invocation |
-| Pydantic v2 | Strict tool and HTTP request validation |
-| FastAPI / Uvicorn | HTTP endpoints and SSE response delivery |
-| HTTPX / asyncio / AnyIO | Reusable asynchronous clients, cancellation, timeouts, transport adapters |
-| SQLite | Persistent tenant quotas, reservations, reconciliation, WAL transactions |
-| pytest / pytest-asyncio | Unit, ASGI integration, cancellation, concurrency, and real stdio tests |
-| Ruff | Lint and formatting checks |
-| Matplotlib | Measured performance figures; optional benchmark dependency |
+| Python 3.11+, asyncio | Services, cancellation, and timeouts; CI uses Python 3.12 |
+| MCP SDK v2, Pydantic v2 | Tool lifecycle, discovery, and strict validation |
+| FastAPI, Uvicorn, HTTPX | HTTP services, SSE, and reusable async clients |
+| SQLite | On-disk quota ledger and atomic admission |
+| pytest, Ruff | Tests, lint, and formatting |
+| Matplotlib 3.10.7 | Optional measured report and PNG figures |
 
-Runtime and test dependencies are pinned in [uv.lock](uv.lock). Matplotlib is installed only by the report command, with version `3.10.7`.
+Runtime and test dependencies are resolved in [uv.lock](uv.lock). Plotting is installed separately by the report command.
 
-## Test results and measurement dashboard
+## Task 1: MCP customer tools
 
-Snapshot from [the measurement run](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/actions/runs/42109900861), taken at **2026-11-05 21:08:53 UTC**, using application revision [e82e98d](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/commit/e82e98d441a3f57674047cf791b1b053376e9d59). Counts come from the run's actual `results.xml`; measurements come from [docs/metrics.json](docs/metrics.json).
+`uv run assessment-mcp` starts an SDK-managed stdio server. It exposes:
 
-| Component | Passed | Failed | Skipped | Total | Measured result |
-|---|---:|---:|---:|---:|---|
-| MCP server | 3 | 0 | 0 | 3 | 0.228 ms median tool round trip |
-| Security gateway | 12 | 0 | 0 | 12 | 0.486 ms allowed; 0.345 ms blocked |
-| Streaming PII | 35 | 0 | 0 | 35 | 24.100 µs first safe output at 64-character chunks |
-| Model router | 21 | 0 | 0 | 21 | 3.012 s completion after the 3 s timeout |
-| Shared validation and live verification | 12 | 0 | 0 | 12 | Configuration, protocol and actual-process checks |
-| **All collected tests** | **83** | **0** | **0** | **83** | **Executed with pytest** |
+- `get_customer_record`: requires an exact `CUST-` identifier followed by five ASCII digits.
+- `trigger_refund`: accepts a known customer, finite positive numeric amount, and a reason of at least ten characters. Refunds are simulated and are not persisted.
 
-Counts represent distinct collected pytest cases after removal of five inherited duplicates. The suite includes independent requirement regressions and actual-process verification. They are not a code-coverage percentage. Lint, formatting, and locked installation are separate CI checks.
-
-The tests exercise:
-
-- MCP initialization, discovery, successful tools, invalid arguments, unknown customers/tools, malformed JSON/envelopes, and clean protocol stdout.
-- Viewer/admin authorization, transparent discovery, rejected-call backend counts, and sanitized downstream failures.
-- Every split point, 100 seeded randomized chunk layouts, Unicode SSE, malformed events, bounded pending state, and upstream cleanup on cancellation.
-- Tenant isolation, exact quota boundaries, expiry, independent SQLite connections, concurrent admission, primary success, timeout cancellation, fallback, and retained failure charges.
-
-## Performance plots
-
-All figures are generated by [scripts/benchmark_report.py](scripts/benchmark_report.py). The snapshot used Python **3.12.16** on Linux x86_64 with **4 logical CPUs**. Raw samples, repetitions, environment details, configured delays, and token batches are committed in [docs/metrics.json](docs/metrics.json).
-
-These are small, single-runner measurements with controlled mocks. They measure implementation behavior; they do not establish production capacity or real LLM provider latency.
-
-### MCP tool and authorization latency
-
-![Measured MCP and security gateway latency](docs/images/endpoint_latency.png)
-
-Thirty trials per operation. The MCP measurement uses the official SDK client and server in one process. Proxy measurements use HTTPX ASGI and mock transports. The clock covers the complete in-process call, including validation and response handling; it excludes TCP, TLS, subprocess startup, and remote network time.
-
-| Operation | Median | P95 | Trials | Backend calls |
-|---|---:|---:|---:|---:|
-| MCP customer tool | 0.228 ms | 0.315 ms | 30 | SDK tool invoked |
-| Viewer, permitted tool | 0.486 ms | 0.607 ms | 30 | 30 |
-| Viewer, blocked admin tool | 0.345 ms | 0.371 ms | 30 | **0** |
-
-### Streaming latency and memory
-
-![Measured streaming redactor latency and allocations](docs/images/streaming_performance.png)
-
-The corpus contains 114,000 characters with repeated email and card values. Each chunk size has seven timed trials. First output means elapsed processing time until `feed()` returns its first nonempty safe string. It is **not network TTFT**.
-
-For 64-character chunks, median complete-input processing took **39.348 ms**, first safe output took **24.100 µs**, and the separate memory pass measured **3.74 KiB** of peak traced allocation. The longest pending candidate in this corpus was **19 characters**, against the configured 4,096-character cap.
-
-Memory is measured in a separate `tracemalloc` pass to keep tracing overhead out of the timing results. It excludes the preallocated corpus, interpreter baseline, and native process RSS. The memory plot is not a whole-process memory claim.
-
-### Token-rate-limit behavior
-
-![Measured SQLite token quota admission](docs/images/token_rate_limit.png)
-
-This chart uses **real concurrent SQLite transactions** with an injected logical clock; the horizontal batches have categorical spacing. It does not wait 75 wall-clock seconds or simulate a model generating tokens.
-
-At logical second zero, three independent connections request 20,000 tokens each. **Two are admitted and one is rejected**, leaving 40,000 tokens charged. Later batches fill the limit, demonstrate rejection at capacity, and exercise rolling expiration. All observed totals stay within the 50,000-token cap.
-
-The JSON includes each request batch and measured SQLite transaction time. It does not label reservation throughput as LLM token-generation throughput. Admission order among unequal concurrent requests can vary.
-
-### Model failover timing
-
-![Measured primary and fallback completion latency](docs/images/model_failover.png)
-
-| Scenario | Median completion | P95 | Trials |
-|---|---:|---:|---:|
-| Primary success | 13.213 ms | 13.493 ms | 10 |
-| Primary HTTP 429, then backup | 18.421 ms | 27.393 ms | 10 |
-| Primary exceeds 3000 ms, then backup | 3012.202 ms | 3012.432 ms | 3 |
-
-The providers are asynchronous fixtures: successful primary work waits 10 ms, the 429 fixture waits 10 ms before raising, and the backup waits 5 ms. The timeout fixture waits 5 seconds but is cancelled by the router's actual **3,000 ms** deadline. Measurements include SQLite reservation, scheduling, provider waits, and reconciliation. The primary was cancelled in all three timeout trials before completion was returned.
-
-## Installation and execution
-
-Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
-
-```sh
-git clone https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment.git
-cd Quilr_ai_Assessment
-uv sync --locked
-uv run python scripts/run_demo.py
-```
-
-The launcher starts five localhost processes. Run the stdio MCP server separately with `uv run assessment-mcp`; it waits for protocol input and does not expose an HTTP port.
-
-| Component | Command | Address |
-|---|---|---|
-| Task 1: MCP tools | `uv run assessment-mcp` | stdio |
-| Task 2: security gateway | `uv run uvicorn ai_field_assessment.task2_mcp_gateway.app:app --port 8000` | `POST /mcp` |
-| Mock downstream MCP | `uv run uvicorn ai_field_assessment.task2_mcp_gateway.mock_mcp_server:app --port 8001` | `POST /mcp` |
-| Mock LLM providers | `uv run uvicorn ai_field_assessment.task3_stream_guardrail.mock_llm_provider:app --port 8002` | `/generate`, `/primary`, `/backup` |
-| Task 3: streaming guardrail | `uv run uvicorn ai_field_assessment.task3_stream_guardrail.app:app --port 8003` | `POST /generate` |
-| Task 4: model router | `uv run uvicorn ai_field_assessment.task4_model_router.app:app --port 8004` | `POST /completions` |
-
-FastAPI documentation is available at `/docs` on each HTTP service. Bind to localhost for these development demonstrations.
-
-## Implementation details
-
-### Task 1: validated MCP tools
-
-`get_customer_record` accepts `{"customer_id":"CUST-12345"}` and returns a simulated active customer. `trigger_refund` accepts:
+Example tool call:
 
 ```json
-{"customer_id":"CUST-12345","amount":75.5,"reason":"Product arrived damaged"}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"trigger_refund","arguments":{"customer_id":"CUST-12345","amount":75.5,"reason":"Product arrived damaged"}}}
 ```
 
-Its result includes a `mock-` refund ID, decimal amount string, and `"status":"simulated"`. Customer identifiers require exactly five ASCII digits. Fields are strict, unexpected arguments are refused, and refund amounts must be finite positive numbers. Boolean and string amounts are rejected.
-
-The official MCP SDK v2 owns transport framing, lifecycle, discovery and tool registration. Public middleware maps argument validation to a top-level JSON-RPC `-32602`. Unknown customer business errors use SDK tool errors. See [DESIGN.md](DESIGN.md) for the distinction and version caveats.
-
-Example JSON-RPC call:
-
-```json
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_customer_record","arguments":{"customer_id":"CUST-12345"}}}
-```
-
-The tool's application data is:
+The application data includes `"status":"simulated"`, a generated `mock-` refund ID, and a decimal amount string. The SDK wraps this data in MCP tool content. Customer lookup returns:
 
 ```json
 {"customer_id":"CUST-12345","name":"Demo Customer","status":"active"}
 ```
 
-The SDK wraps application data in MCP tool content. A valid but unknown identifier returns an `isError:true` tool result with `Customer not found`; it is distinct from a malformed-argument JSON-RPC error.
+Strict schemas reject strings or booleans as amounts and reject extra fields. Malformed JSON receives `-32700`, invalid envelopes `-32600`, unknown methods `-32601`, and invalid tool arguments `-32602`. A valid but unknown customer produces an `isError:true` tool result. Protocol output goes to stdout; logging goes to stderr.
 
-Use MCP Inspector with Node.js installed:
+With Node.js installed, inspect the two tools using:
 
 ```sh
 npx @modelcontextprotocol/inspector uv run assessment-mcp
 ```
 
-Connect with stdio, list the two tools, and call each with the examples above. No authentication is added to Task 1.
+## Task 2: MCP security gateway
 
-### Task 2: authorization proxy
+The gateway authenticates the configured Bearer token before parsing the request. `dev-admin` permits administrative calls. `dev-viewer` can discover all tools and call ordinary tools, but cannot invoke names beginning `admin_`. Discovery remains unchanged.
 
 ```sh
 curl -s http://127.0.0.1:8000/mcp -H 'Authorization: Bearer dev-viewer' -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"admin_reset_key","arguments":{}}}'
 ```
 
-Expected response, without contacting the backend:
+The response is returned before any backend call:
 
 ```json
 {"jsonrpc":"2.0","id":5,"error":{"code":-32001,"message":"Unauthorized Tool Call"}}
 ```
 
-Replace the token with `dev-admin` to permit the call. `tools/list` is forwarded transparently, including administrative tools. Roles come exclusively from configured tokens. This is mock authentication, not a production identity system.
+Missing or invalid credentials receive HTTP 401. Allowed requests use a fixed server-configured destination; incoming authorization headers are not forwarded. Downstream failures produce sanitized gateway errors. This endpoint supports one JSON-RPC request per POST, without batches, notifications, or MCP HTTP sessions.
 
-The HTTP demonstration accepts one JSON-RPC request per POST. It deliberately rejects batches and notifications; it is not a complete stateful Streamable HTTP MCP implementation. URLs are configured by the server, and incoming headers are not copied to the backend.
-
-### Task 3: streaming redaction
+## Task 3: streaming PII guardrail
 
 ```sh
 curl -N http://127.0.0.1:8003/generate -H 'Content-Type: application/json' -d '{"prompt":"Contact john@gmail.com, SSN 123-45-6789, card 4111 1111 1111 1111. Hello!"}'
 ```
 
-The mock provider echoes the prompt as character deltas by default, splitting all PII. Direct mock-provider requests may set `chunk_size` and `truncate_after` to control chunk boundaries and simulate an incomplete stream. The gateway emits SSE `data: {"text":"..."}` events followed by `data: [DONE]`. Concatenating text deltas gives redacted output in order. SSE framing can differ from upstream because one safe output segment can span multiple input events.
-
-For the example above, concatenated safe text is:
+The mock echoes the prompt in small deltas. Concatenating the safe SSE text gives:
 
 ```text
 Contact [REDACTED], SSN [REDACTED], card [REDACTED]. Hello!
 ```
 
-The redactor retains attached numeric prefixes and normalizes card separators including repeated spaces, tabs, line breaks, and nonbreaking spaces. It buffers candidates until safe delimiters, retains numeric runs across spaces and hyphens, checks cards with Luhn, and replaces detected values with `[REDACTED]`. Oversized candidates fail closed. Errors terminate with a sanitized SSE error event and discard uncommitted text. Cancellation closes the upstream response.
+The parser incrementally decodes UTF-8 and handles SSE framing. The redactor retains a candidate across chunks, including numeric groups separated by whitespace or hyphens. It checks 13–19 digit cards with Luhn and replaces detected values with `[REDACTED]`. Safe delimited text can leave before the source finishes.
 
-### Task 4: quota and fallback
+Pending candidate state is capped at 4,096 characters by default. Oversized candidates are redacted and discarded through a safe boundary. A malformed or interrupted upstream stream discards uncertain text and emits a sanitized SSE error. Cancellation closes the upstream response. Direct requests to the mock provider can set `chunk_size` and `truncate_after` to exercise split and incomplete streams.
+
+## Task 4: model router and quota ledger
 
 ```sh
 curl -s http://127.0.0.1:8004/completions -H 'X-API-Key: demo-tenant' -H 'Content-Type: application/json' -d '{"prompt":"[429] demonstrate fallback","max_output_tokens":64}'
 ```
 
-Response fragment for this simulated fallback:
+This returns a completion with `"model":"backup"`, `"text":"Simulated backup response"`, and `usage_tokens`. Ordinary prompts use the primary. The mock prefixes `[429]`, `[timeout]`, and `[error]` exercise rate-limit fallback, the actual three-second deadline, and a primary 500 respectively. Only 429 or timeout triggers backup; there is no retry loop. Backup also has a deadline.
 
-```json
-{"text":"Simulated backup response","model":"backup"}
-```
+Each tenant has a default 50,000-unit quota over a rolling 60 seconds. A SQLite `BEGIN IMMEDIATE` transaction checks the shared ledger and reserves estimated input plus the requested output budget before calling a provider. Tenant identifiers are hashed before storage.
 
-The complete response also reports `usage_tokens`. A prompt beginning `[timeout]` makes the mock primary exceed the default three-second timeout. `[error]` returns an upstream 500 and does not fall back. Other prompts use the primary.
+The ledger keeps these values separate:
 
-Quota defaults to 50,000 tokens per tenant over a rolling 60 seconds. Before forwarding, an atomic SQLite transaction reserves UTF-8 input bytes plus maximum output tokens. The byte counter is conservative for the mock and byte-based tokenizers; replace the counter for a provider with different tokenization. Primary success reconciles to at least observed input/output under the configured counter. Fallback retains at least one full reservation and any larger observed or reported charge; unknown failures retain the reservation. Tenant keys are hashed before storage. Development tenant keys identify tenants without authenticating them.
+| Field | Meaning |
+|---|---|
+| `estimated_input` | Input measured by the configured counter |
+| `reserved_output` | Requested maximum output |
+| `reserved` | Admission budget: estimated input plus output reserve |
+| `reported_usage` | Successful provider receipt, or null when unavailable |
+| `actual` | Reconciled quota charge, or null to retain the full reservation |
+| `reserved_at`, `completed_at` | Original admission time and separate completion time |
+
+The default counter uses UTF-8 byte length. It is a local estimate, not exact tokenization for arbitrary models. A known receipt cannot reduce the charge below observed input and output under that counter. Missing usage retains the reservation, or a larger observed amount. Fallback retains at least one full logical-request reservation and any larger known charge. It does not add a second reservation or claim to measure both providers' billing.
+
+Completed charges expire at `reserved_at + 60`, regardless of completion delay. Pending work stays charged past that boundary. At age 120 seconds it becomes stale, with its unknown charge held until age 180 seconds. These deadlines use original reservation time, including when cleanup runs late. Late completion records usage without starting a fresh quota window. Ledger history is retained for 24 hours separately from quota eligibility.
+
+Existing disk databases migrate transactionally on initialization. Legacy timestamps were overwritten by completion; their original values cannot be recovered. Migration preserves the last stored timestamp and charge, using that timestamp as the conservative starting point. [DESIGN.md](DESIGN.md) details migration and recovery.
+
+Quota rejection returns HTTP 429:
 
 ```json
 {"error":{"code":"RATE_LIMIT_EXCEEDED","message":"Unable to process this request","request_id":"generated-id"}}
 ```
 
-Errors use HTTP 429 for quota, 422 for invalid input, 401 for missing tenant key, 502 for provider failure, 504 when fallback times out, and 503 for database failure.
+Other router statuses are 401 for a missing tenant key, 422 for invalid input, 502 for provider failure, 504 for fallback timeout, and 503 for database failure. Diagnostic logs contain request IDs, standardized codes, and status numbers.
 
-## Design decisions
+## Installation
 
-| Concern | Implemented decision | Consequence |
-|---|---|---|
-| Tool validation | Strict Pydantic schemas and public SDK middleware | Extra fields and invalid types receive top-level `-32602` |
-| Malformed stdio input | Map exceptions from the SDK parser through a public transport adapter | `-32700` for invalid JSON; `-32600` for invalid envelopes |
-| Business errors | Recognize typed customer exceptions and sanitize other tool failures | Unknown customers return a clear tool error without internal diagnostics |
-| Authorization | Resolve roles from configured Bearer tokens, then check `admin_` names | Blocked calls never reach the backend; discovery stays transparent |
-| Streaming boundaries | Retain a candidate across deltas and numeric runs across spaces/hyphens | Split PII is inspected before release |
-| Oversized candidates | Emit one redaction marker and discard through a safe boundary | Bounded pending state; long safe identifiers can be over-redacted |
-| Concurrency | `BEGIN IMMEDIATE` around quota check and insertion | Independent connections share one atomic admission decision |
-| Token accounting | Reserve before forwarding; reconcile known primary usage | Fallback and failures retain one full logical-request charge |
-| Failover | Cancel primary at its deadline, then attempt backup once | No late-primary response race or infinite retry loop |
-| Resources | Lifespan HTTP clients, response contexts, threaded SQLite I/O | Connections are reused and cancellation releases upstream resources |
-
-See [DESIGN.md](DESIGN.md) for protocol compatibility, stale reservations, error distinctions, token assumptions, and performance trade-offs. Development credentials and tenant identifiers are mock authentication.
-
-## Configuration
-
-`.env.example` documents defaults. Export variables in your shell or use Uvicorn's `--env-file .env` with the optional dotenv dependency. The application does not implicitly load `.env` files. CLI `--host` and `--port` control binding. All upstream defaults use localhost.
-
-| Variable | Default |
-|---|---|
-| `GATEWAY_HOST`, `GATEWAY_PORT` | `127.0.0.1`, `8000` (demo host and base port) |
-| `MCP_SERVER_NAME` | `Assessment Customers` |
-| `DOWNSTREAM_MCP_URL` | `http://127.0.0.1:8001/mcp` |
-| `ADMIN_TOKEN`, `VIEWER_TOKEN` | `dev-admin`, `dev-viewer` |
-| `LLM_STREAM_URL` | `http://127.0.0.1:8002/generate` |
-| `PRIMARY_PROVIDER_URL`, `BACKUP_PROVIDER_URL` | local mock `/primary`, `/backup` |
-| `PRIMARY_TIMEOUT` | `3.0` seconds, also caps backup duration |
-| `DATABASE_PATH` | `data/usage.db` |
-| `TOKENS_PER_MINUTE` | `50000` |
-| `PII_BUFFER_SIZE` | `4096` characters |
-| `LOG_LEVEL` | `INFO` |
-
-Real endpoints must implement the documented local contracts or use an adapter. No claim is made that these mock payloads are OpenAI- or Anthropic-compatible.
-
-## Reproduce tests and figures
-
-From the repository root:
+Install Python 3.11+ and [uv](https://docs.astral.sh/uv/), then:
 
 ```sh
+git clone https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment.git
+cd Quilr_ai_Assessment
 uv sync --locked
+```
+
+## Running
+
+Start the five HTTP processes together:
+
+```sh
+uv run python scripts/run_demo.py
+```
+
+The launcher checks occupied ports, waits for readiness, monitors child processes, and stops them on exit. Task 1 runs separately with `uv run assessment-mcp` and waits for stdio input.
+
+| Service | Local address |
+|---|---|
+| Security gateway | `http://127.0.0.1:8000/mcp` |
+| Mock MCP backend | `http://127.0.0.1:8001/mcp` |
+| Mock providers | `http://127.0.0.1:8002/generate`, `/primary`, `/backup` |
+| Streaming guardrail | `http://127.0.0.1:8003/generate` |
+| Model router | `http://127.0.0.1:8004/completions` |
+
+HTTP services expose `/docs`. Use `--host` and `--base-port` on the launcher to change binding. [.env.example](.env.example) lists upstream URLs, mock credentials, timeouts, quota, database path, and buffer settings. Export variables in your shell; the application does not load this file automatically. Default SQLite storage is `data/usage.db`.
+
+The curl examples use POSIX shell quoting. In Windows PowerShell, use `Invoke-RestMethod` with the same headers and JSON body, or run them in Git Bash.
+
+## Tests
+
+```sh
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest -v --junitxml=results.xml
+uv run python -m pytest -v --junitxml=results.xml
+uv run python scripts/verify_all.py
+uv run python scripts/benchmark.py
+```
+
+[CI run 42115120480](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/actions/runs/42115120480) tested [revision fc82963](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/commit/fc829637efefdbb9727b4f28247038c3a3a941c1) on Linux and Windows with Python 3.12. Both jobs passed locked installation, Ruff, **104 tests with 0 failures and 0 skips**, the live verifier, and the basic benchmark.
+
+| Component | Passed | Failed | Skipped | Total |
+|---|---:|---:|---:|---:|
+| MCP server | 3 | 0 | 0 | 3 |
+| Security gateway | 12 | 0 | 0 | 12 |
+| Streaming PII | 35 | 0 | 0 | 35 |
+| Model router | 42 | 0 | 0 | 42 |
+| Shared validation and process checks | 12 | 0 | 0 | 12 |
+| **All collected cases** | **104** | **0** | **0** | **104** |
+
+The suite covers SDK stdio lifecycle and errors, authorization with backend call counts, every split point and seeded streaming layouts, bounded buffers, cancellation, SQLite concurrency, restart persistence, schema migration rollback, and completion delays of 0, 10, 59, and 60 seconds.
+
+The standalone verifier starts a real SDK stdio subprocess and five HTTP processes on isolated ports with a temporary on-disk database. It checks lookup, refund, discovery, authorization, SSE, primary, fallback, and quota, then cleans up. [REQUIREMENTS.md](REQUIREMENTS.md) maps requirements to these checks. Counts are collected pytest cases, not a coverage percentage.
+
+## Measured performance
+
+Snapshot: **2026-11-05T21:43:17.730794+00:00**, Python **3.12.16**, Linux x86_64, **4 logical CPUs**. Source SHA and run are linked above and stored with all raw samples in [docs/metrics.json](docs/metrics.json).
+
+| Measurement | Median | P95 | Trials |
+|---|---:|---:|---:|
+| MCP tool round trip | 0.688 ms | 0.839 ms | 30 |
+| Allowed proxy call | 0.751 ms | 1.300 ms | 30 |
+| Blocked admin call | 0.492 ms | 0.833 ms | 30 |
+| First safe output, 64-character chunks | 26.2 microseconds | 36.1 microseconds | 7 |
+| Primary success | 15.053 ms | 32.119 ms | 10 |
+| HTTP 429 fallback | 20.249 ms | 39.863 ms | 10 |
+| 3000 ms timeout fallback | 3014.781 ms | 3032.941 ms | 3 |
+
+At 64-character chunks, median full-input processing took **42.568 ms**. The allocation pass measured **3.74 KiB**, with at most **19 pending characters** in this corpus. All three timeout trials cancelled primary before returning a completion. These controlled mock measurements describe this runner; they are not vendor latency or capacity claims.
+
+Generate the report after writing `results.xml`:
+
+```sh
 uv run --with matplotlib==3.10.7 python scripts/benchmark_report.py
 ```
 
-The report command reads the just-generated JUnit XML, measures the implementation, and writes `docs/metrics.json` plus four PNGs under `docs/images/`. It intentionally takes roughly nine seconds just for the three real timeout trials, plus setup and other measurements. Timing is reported, not used as a flaky CI pass/fail threshold. GitHub Actions uploads the XML, metrics, images, and lockfile as verification artifacts.
+The command writes [raw measurements](docs/metrics.json) and four PNGs. Timing is reported rather than used as a CI threshold.
 
-The committed README dashboard is a dated snapshot. Regenerating the report updates the metrics and figures; update the dashboard values when publishing a new snapshot.
+![MCP and proxy latency](docs/images/endpoint_latency.png)
 
-| Path | Contents |
-|---|---|
-| `src/ai_field_assessment/` | Four services, shared configuration, and validation |
-| `tests/` | Unit and integration tests |
-| `scripts/run_demo.py` | Launch the five localhost HTTP processes |
-| `scripts/verify_all.py` | Live stdio/TCP verification with isolated services and automatic cleanup |
-| `scripts/benchmark_report.py` | Generate task-level counts, measurements, and PNGs |
-| `docs/metrics.json` | Raw measured samples and provenance |
-| `docs/images/` | README performance figures |
-| `DESIGN.md` | Detailed design decisions and limitations |
-| `.github/workflows/ci.yml` | Locked installation, checks, tests, and report artifacts |
+Thirty trials per operation, using an in-process SDK client or HTTPX ASGI/mock transports. These round trips include validation and response handling, but exclude TCP, TLS, process startup, and remote network latency. Blocked calls make zero backend requests.
 
-## Limits and next steps
+![Streaming processing and traced allocations](docs/images/streaming_performance.png)
 
-PII detection follows explicit lexical rules, not every possible representation. Conservative candidate buffering can redact long safe tokens, delay a whitespace-free response, or hide incomplete email-like tokens. Retained pending state is bounded; request and HTTP transport buffers have their own limits. Production deployments also need provider-specific tokenization, trusted tenant identity, OIDC authentication, request size limits, TLS, telemetry, and a full MCP HTTP session implementation where applicable.
+Seven timing trials per chunk size over 114,000 characters. First output is processing time until the first nonempty safe `feed()` result, not network TTFT. A separate `tracemalloc` pass measures Python allocations; it excludes the preallocated corpus, native RSS, and interpreter baseline.
 
-SQLite is suitable for a local assessment and a shared on-disk database on one host. It is not a cross-region quota service. A provider that suppresses task cancellation can delay timeout completion; adapters must honor cancellation. Refund IDs are simulated and refund records are returned rather than persisted.
+![SQLite admission over logical time](docs/images/token_rate_limit.png)
+
+Real concurrent SQLite transactions use an injected logical clock. At second zero, three independent 20,000-unit reservations admit two and reject one against 50,000. Later batches fill the quota and exercise expiry. The horizontal axis has categorical spacing. This measures admission behavior, not model token-generation throughput.
+
+![Model failover timing](docs/images/model_failover.png)
+
+Primary success and 429 scenarios each have ten trials. Three timeout trials use the router's real 3,000 ms deadline. Fixture delays are 10 ms for normal primary/429 and 5 ms for backup; the timeout primary waits 5 seconds unless cancelled. Completion timing includes SQLite, scheduling, provider waits, and reconciliation.
+
+## Limitations
+
+Credentials and tenant keys are development fixtures, not trusted authentication. Refunds and model responses are simulated. Real providers need contract adapters, matching tokenization and framing budgets, and usage receipts for billing across failed attempts.
+
+Pattern-based PII detection can miss unsupported formats or redact safe long identifiers. Candidate state is bounded, while transport buffers and request bodies have separate limits. A provider that ignores cancellation can delay timeout completion.
+
+SQLite serializes writers and assumes a shared local disk on one host. Wall-clock rollback conservatively retains charges; large forward jumps can expire them early. Stale handling assumes normal calls finish within 120 seconds. Deployments need trusted identity, TLS, request and connection limits, and a shared quota service if they span hosts.

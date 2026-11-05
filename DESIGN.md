@@ -1,60 +1,80 @@
-# Implementation decisions
+# Design decisions
 
-## SDK lifecycle and errors
+## Protocol boundary
 
-Task 1 targets official Python SDK v2 (`mcp>=2,<3`), with MCP 2.3.0 in the lockfile. `mcp.server.MCPServer` and `@server.tool()` provide the registry, discovery schemas, validation and invocation. A public SDK `Server` runner delegates discovery and execution to the registry's public methods. SDK `stdio_server()` owns parsing and framing. The host starts a subprocess; stdin/stdout carry one protocol connection, while Python logging writes to stderr. The server never writes debugging text to stdout.
+Task 1 uses the locked MCP SDK v2 registry, discovery, validation, and invocation APIs. A public SDK `Server` runner delegates to the registry. The SDK stdio transport owns framing and parsing. A public adapter maps parser validation failures to JSON-RPC errors without replacing the parser or accessing private attributes.
 
-The SDK negotiates protocol compatibility. The subprocess test exercises the supported legacy sequence: `initialize` with version `2025-06-18`, response, `notifications/initialized`, then `tools/list` and `tools/call`. Newer SDK clients may use `server/discover`; application code does not implement either handshake itself.
+Malformed JSON maps to `-32700`; invalid envelopes map to `-32600` with a null ID. Middleware validates raw tool parameters before invocation and returns `-32602` for invalid arguments or unknown tools. Unknown methods return `-32601`. A recognized customer-not-found exception becomes a sanitized tool result with `isError:true`.
 
-Public v2 middleware inspects raw `tools/call` parameters before SDK tool invocation. Pydantic schemas reject incorrect types, extra fields, malformed IDs, boolean/nonfinite/nonpositive amounts, and short reasons. Middleware raises `MCPError(code=-32602, message="Invalid tool arguments")`. This is a top-level protocol error; it is distinct from a successful JSON-RPC envelope whose tool result contains `isError:true`. Unknown tools return `-32602`; absent customer records are business errors surfaced by the SDK's tool-error conversion. Unknown methods and parse errors belong to the SDK.
+The SDK negotiates protocol compatibility. Tests cover the legacy initialize/initialized sequence and a current SDK client connection. Middleware is provisional in SDK v2, so the lockfile and real wire tests matter when upgrading. Stdout carries protocol messages only.
 
-The SDK stdio parser yields Pydantic validation exceptions for malformed lines; its default runner logs these without a response. `transport.py` maps SDK parser exceptions to `-32700` for malformed JSON and `-32600` for invalid envelopes, with a null ID. Valid SDK-parsed messages pass through untouched to the public runner over an AnyIO memory stream with zero queue capacity. SDK protocol types serialize the error response. This adds error mapping without reimplementing wire parsing, initialization, dispatch or serialization, and without accessing private SDK attributes. Business-level tool failures are sanitized as tool results with `isError:true`.
+## Authorization boundary
 
-The SDK documentation marks middleware provisional within v2. The lockfile and real subprocess wire test detect version drift. The locked SDK is installed and exercised in GitHub Actions because the local host cannot download dependencies.
+Task 2 maps configured Bearer credentials to roles before parsing JSON. Viewer discovery remains transparent, including administrative tools. Viewer `admin_` calls are rejected before forwarding, preserving the request ID.
 
-## Proxy authorization
+The destination comes from server configuration. Redirects are disabled, and incoming headers are not copied to the backend. A lifespan HTTPX client reuses connections. This is a single-request JSON proxy around a mock endpoint; it does not implement stateful MCP Streamable HTTP sessions.
 
-Bearer credentials map to roles using two configured development tokens. Body-supplied roles have no effect. `tools/list` goes through unchanged. A viewer's `admin_` tool call receives the required `-32001` error with the original ID before HTTPX is invoked. A reusable lifespan-scoped client forwards to a server-configured URL with redirects disabled. No untrusted headers or destination URLs are forwarded. Network errors become sanitized JSON-RPC gateway errors. Downstream JSON-RPC bodies are validated and then returned unchanged.
+## Streaming state and resource use
 
-This is a JSON request/response proxy around a mock MCP endpoint, not a complete MCP Streamable HTTP session proxy. Authentication precedes parsing, so invalid credentials receive HTTP 401 even if their body is malformed.
+The redactor carries lexical candidates between deltas. Ordinary candidates finish at whitespace; numeric candidates retain whitespace and hyphens so formatted cards and SSNs can be inspected as a whole. Attached prefixes remain buffered with the first numeric group. Cards require 13–19 ASCII digits and Luhn validation. SSNs use a three-two-four shape without checking issuance. Email-like incomplete values and incomplete SSNs are conservatively hidden at EOF.
 
-## Incremental redaction
+At the configured candidate cap, the redactor emits one marker and discards the rest through a safe boundary, including numeric continuation groups. This can hide long legitimate identifiers. Pending state is bounded; total working memory also includes the current input and output chunk. Candidate buffering adds approximately a word or numeric run of delay rather than requiring the whole response.
 
-Independent substitution on chunks leaks values split across chunks. Instead, the redactor carries one lexical candidate across every `feed` call. Ordinary tokens finish at whitespace. Numeric candidates can span whitespace/hyphens to capture formatted cards and SSNs. Candidates are scanned only when safe to emit. Emails require an `@` and dotted domain; incomplete `@` candidates are also conservatively redacted. SSNs use a three-two-four digit shape, including unassigned combinations because this is a disclosure guard. Cards need 13–19 ASCII digits and a valid Luhn checksum.
+The SSE parser incrementally decodes UTF-8 with optional initial BOM, handles CR/LF, comments and multiline data, and caps an event at 65,536 characters. Only complete events reach the redactor. Malformed or incomplete streams discard pending candidates. Async iteration provides backpressure without a producer queue. Response contexts close upstream connections on success, error, cancellation, or generator close.
 
-At the configured buffer threshold, the candidate becomes `[REDACTED]` and the state machine discards its remainder until a safe delimiter. Retaining a fixed tail cannot make unbounded email matching safe; this fail-closed policy handles arbitrarily long candidates without releasing prefixes. Long legitimate identifiers may also be redacted. Memory is O(configured pending limit + current input/output chunk). The redactor intentionally processes complete candidates, so its practical latency is one word or numeric run; safe text emits before source completion.
+## SQLite admission and time
 
-The SSE parser incrementally decodes UTF-8, handles CR, LF, CRLF, comments, and multiline data, and caps event state at 65,536 characters. JSON delta payloads contain `text`. Only properly completed events reach the redactor. Truncation, malformed JSON/UTF-8, missing completion markers, or provider errors discard pending text. Downstream framing is reconstructed from safe deltas. Upstream response context managers close on success, failure, cancellation, or generator close. No producer queue is used, so downstream backpressure reaches the upstream iterator.
+Each reservation has an immutable `reserved_at` and a separate nullable `completed_at`. The ledger stores a hashed tenant, request ID, estimated input, reserved output, total reservation, optional provider receipt, optional reconciled charge, and state.
 
-## SQLite window and concurrency
+| State | Charge | Quota eligibility |
+|---|---|---|
+| Pending | Full reservation | Until reconciliation or stale transition, including after 60 seconds |
+| Complete | Reconciled charge, otherwise reservation | Original reservation is younger than 60 seconds |
+| Stale | Full reservation | Original reservation is younger than 180 seconds |
 
-The events table records hashed tenant ID, unique request ID, timestamp, reservation, optional actual usage, and state. Indexes support tenant/time-window sums and expired-state cleanup. Every reserve opens a dedicated connection, uses a five-second busy timeout, acquires `BEGIN IMMEDIATE`, performs cleanup, sums charges, checks the limit, inserts, and commits. Independent connections and processes therefore cannot all spend the same remaining quota. Parameterized statements protect tenant values. WAL permits readers while a writer owns the reservation transaction. SQLite operations run in worker threads, avoiding synchronous disk I/O in the request coroutine.
+Pending rows become stale at age 120 seconds. Cleanup never changes reservation timestamps. An old row first observed at age 181 is already outside its stale grace period; cleanup does not start another minute. Late completion records its receipt and completion time, but cannot create a new current-window charge.
 
-Completed charges expire after a rolling 60 seconds measured from reconciliation. This is conservative for long generations. Active requests remain charged even if their start time has left the window. Reservations older than 120 seconds become full stale charges timestamped at cleanup, then expire after another 60 seconds. This bounds crashed-request retention without suddenly refunding unknown consumption. Defaults assume normal provider operations end well before the stale threshold. Production timeouts should preserve that relationship.
+A reserve transaction acquires `BEGIN IMMEDIATE` before sampling the clock, ages pending state, prunes retained history, sums tenant charges, checks the budget, and inserts. WAL and a five-second busy timeout support independent connections. Parameterized statements protect tenant values. SQLite work runs in worker threads. Admission serializes writers, so two concurrent checks cannot spend the same remaining budget.
 
-SQLite wall-clock timestamps survive process restarts. Test clocks are injected. Clock rollback conservatively retains more history; large wall-clock jumps are a limitation. Distributed hosts require synchronized clocks or a centralized rate service.
+Operational history lasts 24 hours by default. Pruning requires both admission and completion to be outside retention and never removes pending rows directly. Retention is independent of the quota window. The router retains a frozen reservation context; reconciliation can restore a purged row using its original time and attribution. Repeating reconciliation leaves a completed row unchanged.
 
-## Tokens, failover and reconciliation
+Time comes from a wall clock so state survives process restarts. Tests inject a logical clock without sleeping. Rollback of the clock retains extra charges conservatively. A large forward jump can expire charges early; distributed clocks and cross-host databases are outside this local design.
 
-The replaceable token counter defaults to UTF-8 byte length. The mock uses the same input accounting and bounds generated output by bytes. For real byte/BPE providers, the input byte count is a conservative text-token estimate; provider-specific framing and special tokens require a matching adapter. Reservations are input estimate plus requested maximum output. Reported successful primary usage reconciles the charge with a floor of observed input/output under the configured counter; usage greater than reservation consumes additional quota for future checks. A provider must honor its output limit for reservations to guarantee admission safety.
+## Disk-schema migration
 
-There is one quota reservation per logical request. Primary 429 and a three-second timeout trigger exactly one backup attempt. `asyncio.timeout` cancels and awaits the primary task before backup invocation, avoiding a timeout race with a late response. Arbitrary 500 errors and connection failures do not trigger fallback. Backup has a bounded timeout too. Responses are nonstreaming, so failover cannot duplicate partially committed content.
+Initialization takes an immediate transaction and checks `PRAGMA user_version`. Version 2 stores separate reservation and completion timestamps. A legacy `timestamp` table is renamed, copied into the constrained version 2 table, and dropped inside one transaction. IDs, tenants, reserved/actual amounts, and states are preserved. Indexes and the schema version are committed together. Invalid legacy rows roll the transaction back; future schema versions are refused.
 
-Failed/aborted primary attempts may have consumed unknown tokens. Fallback retains at least the full reservation and any larger observed or reported backup usage. Failures with unknown usage retain the reservation; neither path refunds the primary attempt based only on a smaller backup receipt. This implements a logical-request quota, not a precise two-provider billing ledger. Actual usage across both attempts would need provider receipts for strict cost accounting. Reconciliation runs in a shielded task and is awaited on cancellation. If the host crashes or reconciliation fails, the existing pending reservation remains charged until stale handling.
+Legacy completion code overwrote `timestamp`. Its original reservation time cannot be recovered. Migration uses the last stored time as `reserved_at`, also using it as `completed_at` for completed rows. This can hold a legacy completed charge longer than its unknowable original window. New rows keep both times correctly. Estimate and receipt columns remain null for migrated rows because those facts were not stored.
 
-## Security and performance assumptions
+Initialization is repeatable. Disk tests cover concurrent initialization, retained quota, exact migrated values, whole-migration rollback, and refusal to downgrade a newer schema. Back up an operational database before upgrading.
 
-Development keys are not production identity. Tenant SHA-256 hashes avoid storing raw keys but do not turn low-entropy keys into secrets. HTTP mock services are localhost-only by default. Error payloads never include provider bodies, database paths, or exception traces. Request validation on the router also uses the standard sanitized schema.
+## Token estimates, receipts, and fallback
 
-SSE events and redaction candidates are bounded; endpoints still need deployment-level request limits and connection quotas. SQLite serializes short write transactions; that is appropriate for this task, with bounded busy waits and no process-local quota source of truth. Database cleanup is indexed but remains shared writer work. High-volume deployments would need measured retention tuning and a centralized store.
+The default input and observed-output counter is UTF-8 byte length. It is a local approximation rather than a provider-independent token count. A replaceable counter allows a provider adapter to use its own tokenizer and include framing. Admission reserves input estimate plus maximum output.
 
+A successful receipt is stored separately from the quota charge:
 
-## Requirements review fixes
+- With a receipt, primary success charges at least the larger of observed usage and reported usage.
+- Without a receipt, the full reservation remains, or a larger observed amount is charged.
+- Fallback retains at least the original reservation, observed usage, and any reported backup usage.
+- Failure or cancellation without a receipt retains the reservation.
 
-See [REQUIREMENTS.md](REQUIREMENTS.md) for the assessment-to-test mapping. Numeric candidates now include attached labels and punctuation before the first digit group; numeric groups following an oversized token remain suppressed. Incomplete SSN-shaped values are redacted at EOF, and the SSE decoder accepts an initial UTF-8 BOM.
+A provider can report more than the reservation; that amount reduces future availability even when it exceeds the cap. A provider must honor its output budget and token contract for admission estimates to bound future usage. No reservation scheme can retroactively prevent an unbounded provider response.
 
-The default token counter is also applied to observed output. Reconciliation cannot charge less than observed input plus output under that counter, even if a provider reports a smaller number. A fallback keeps at least the original reservation and records larger reported or observed usage, without creating a second reservation. Late completion after stale cleanup restores its attributed charge. Repeated reconciliation leaves an already completed event unchanged. UTF-8 byte counting remains conservative and replaceable; real-provider tokenizer/framing compatibility is still an explicit deployment requirement.
+There is one reservation per logical request. The router calls primary first, cancels and awaits it at the configured deadline, and calls backup once only for 429 or timeout. Backup also has a deadline. Other errors do not trigger fallback. Returning a single completion avoids replaying partially delivered content.
 
-The launcher probes ports before starting, waits for readiness, monitors every child, returns nonzero on startup failure, and closes its subprocesses. Windows shutdown terminates the owned process tree because venv Python can act as a redirector. The live verifier uses isolated ports, a temporary on-disk database, and the official SDK client against a real stdio subprocess. It then makes real TCP HTTP calls. Local-only clients do not consult external proxy variables; clients with remote configured endpoints continue to honor them.
+Unknown failed-primary usage is not separately measurable. Keeping one reservation prevents an unconditional refund, but does not equal an exact two-provider billing ledger. A smaller backup receipt cannot erase the reservation. Known overrun is retained without adding the same reservation twice.
 
-Gateway failure logs record only standardized codes, request IDs and HTTP statuses. They do not log prompts, API keys, upstream response bodies or raw exception messages. Gateway host and base port are configurable through `GATEWAY_HOST` and `GATEWAY_PORT`, or demo CLI flags.
+Reconciliation runs in a shielded task and is awaited during cancellation. A crash or database failure leaves the pending reservation for stale handling. A task cancelled while admission runs in a worker thread can also leave a pending row; this favors retained quota over an untracked provider call.
+
+## Errors and local execution
+
+Router failures use standardized code/message/request-ID payloads. Logs contain only those IDs, codes, and status numbers, without prompts, keys, upstream bodies, or exception messages. Development keys identify tenants without authenticating them; SHA-256 storage does not make weak keys secret.
+
+The demo owns five subprocesses, probes ports, waits for readiness, monitors child exits, and closes owned process trees. Verification uses isolated ports and a temporary disk database. Local-only configured URLs bypass environment proxies; remote configured URLs retain proxy support.
+
+## Measurement boundaries
+
+[scripts/benchmark_report.py](scripts/benchmark_report.py) reads actual JUnit cases and records raw samples, environment, source SHA, and UTC time. MCP and proxy measurements are in-process round trips. Streaming measures redactor processing and a separate allocation pass. Quota trials run real concurrent SQLite writes with an injected clock. Failover trials include the real three-second primary deadline.
+
+These fixtures measure local implementation behavior. They do not measure remote vendor latency, whole-process memory, production capacity, or model generation throughput. Timing thresholds are not used as CI assertions. [REQUIREMENTS.md](REQUIREMENTS.md) maps implementation decisions to executable evidence.
