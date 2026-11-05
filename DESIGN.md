@@ -46,6 +46,8 @@ Initialization takes an immediate transaction and checks `PRAGMA user_version`. 
 
 Legacy completion code overwrote `timestamp`. Its original reservation time cannot be recovered. Migration uses the last stored time as `reserved_at`, also using it as `completed_at` for completed rows. This can hold a legacy completed charge longer than its unknowable original window. New rows keep both times correctly. Estimate and receipt columns remain null for migrated rows because those facts were not stored.
 
+Concurrent WAL initialization retries only SQLite busy/locked errors for a bounded five seconds using a monotonic deadline. Other startup errors propagate immediately. A forced-lock disk test verifies recovery without relying on a scheduling race.
+
 Initialization is repeatable. Disk tests cover concurrent initialization, retained quota, exact migrated values, whole-migration rollback, and refusal to downgrade a newer schema. Back up an operational database before upgrading.
 
 ## Token estimates, receipts, and fallback

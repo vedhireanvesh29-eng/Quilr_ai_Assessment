@@ -181,16 +181,16 @@ uv run python scripts/verify_all.py
 uv run python scripts/benchmark.py
 ```
 
-[CI run 42115120480](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/actions/runs/42115120480) tested [revision fc82963](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/commit/fc829637efefdbb9727b4f28247038c3a3a941c1) on Linux and Windows with Python 3.12. Both jobs passed locked installation, Ruff, **104 tests with 0 failures and 0 skips**, the live verifier, and the basic benchmark.
+[CI run 42116421791](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/actions/runs/42116421791) tested [revision 5f1644f](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/commit/5f1644fa4ccde687dbe8d62468eaf1786aa8174e) on Linux and Windows with Python 3.12. Both jobs passed locked installation, Ruff, **105 tests with 0 failures and 0 skips**, the live verifier, and the basic benchmark.
 
 | Component | Passed | Failed | Skipped | Total |
 |---|---:|---:|---:|---:|
 | MCP server | 3 | 0 | 0 | 3 |
 | Security gateway | 12 | 0 | 0 | 12 |
 | Streaming PII | 35 | 0 | 0 | 35 |
-| Model router | 42 | 0 | 0 | 42 |
+| Model router | 43 | 0 | 0 | 43 |
 | Shared validation and process checks | 12 | 0 | 0 | 12 |
-| **All collected cases** | **104** | **0** | **0** | **104** |
+| **All collected cases** | 105 | 0 | 0 | 105 |
 
 The suite covers SDK stdio lifecycle and errors, authorization with backend call counts, every split point and seeded streaming layouts, bounded buffers, cancellation, SQLite concurrency, restart persistence, schema migration rollback, and completion delays of 0, 10, 59, and 60 seconds.
 
@@ -198,19 +198,19 @@ The standalone verifier starts a real SDK stdio subprocess and five HTTP process
 
 ## Measured performance
 
-Snapshot: **2026-11-05T21:43:17.730794+00:00**, Python **3.12.16**, Linux x86_64, **4 logical CPUs**. Source SHA and run are linked above and stored with all raw samples in [docs/metrics.json](docs/metrics.json).
+Snapshot: **2026-11-05T21:51:57.335635+00:00**, Python **3.12.16**, Linux x86_64, **4 logical CPUs**. Source SHA and run are linked above and stored with all raw samples in [docs/metrics.json](docs/metrics.json).
 
 | Measurement | Median | P95 | Trials |
 |---|---:|---:|---:|
-| MCP tool round trip | 0.688 ms | 0.839 ms | 30 |
-| Allowed proxy call | 0.751 ms | 1.300 ms | 30 |
-| Blocked admin call | 0.492 ms | 0.833 ms | 30 |
-| First safe output, 64-character chunks | 26.2 microseconds | 36.1 microseconds | 7 |
-| Primary success | 15.053 ms | 32.119 ms | 10 |
-| HTTP 429 fallback | 20.249 ms | 39.863 ms | 10 |
-| 3000 ms timeout fallback | 3014.781 ms | 3032.941 ms | 3 |
+| MCP tool round trip | 0.162 ms | 0.269 ms | 30 |
+| Allowed proxy call | 0.377 ms | 0.616 ms | 30 |
+| Blocked admin call | 0.252 ms | 0.276 ms | 30 |
+| First safe output, 64-character chunks | 17.4 microseconds | 22.9 microseconds | 7 |
+| Primary success | 13.482 ms | 20.202 ms | 10 |
+| HTTP 429 fallback | 18.435 ms | 23.748 ms | 10 |
+| 3000 ms timeout fallback | 3022.279 ms | 3023.864 ms | 3 |
 
-At 64-character chunks, median full-input processing took **42.568 ms**. The allocation pass measured **3.74 KiB**, with at most **19 pending characters** in this corpus. All three timeout trials cancelled primary before returning a completion. These controlled mock measurements describe this runner; they are not vendor latency or capacity claims.
+At 64-character chunks, median full-input processing took **29.307 ms**. The allocation pass measured **3.74 KiB**, with at most **19 pending characters** in this corpus. All three timeout trials cancelled primary before returning a completion. These controlled mock measurements describe this runner; they are not vendor latency or capacity claims.
 
 Generate the report after writing `results.xml`:
 

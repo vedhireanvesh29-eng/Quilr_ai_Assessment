@@ -21,7 +21,7 @@ Paths below are relative to [src/ai_field_assessment](src/ai_field_assessment) a
 | Atomic concurrent admission | WAL, immediate transaction, shared disk | Three independent 20,000-unit requests admit two and reject one |
 | Immutable reservation time and separate completion | `reserved_at`, `completed_at` | `test_rate_window.py`: completion delays 0, 10, 59 and 60; exact expiry |
 | Pending charge past the window; bounded stale grace | Reservation-anchored pending/stale states | Boundary, failure, exact stale deadlines and late completion tests |
-| Safe migration of existing SQLite files | Transactional version 2 copy and schema checks | Legacy disk fixtures, concurrent initialization, rollback and future-version refusal |
+| Safe migration of existing SQLite files | Transactional version 2 copy and schema checks | Legacy disk fixtures, concurrent initialization, forced WAL lock contention, rollback and future-version refusal |
 | Retained history and attributed late reconciliation | Frozen reservation context and separate retention | Purged history recovery with original time, metadata and receipt |
 | Distinct estimates, reserves, receipts and charges | Router accounting and ledger columns | `test_token_accounting.py`: missing/underreported receipts, large output, overrun |
 | No uncontrolled refund or duplicate fallback reserve | Observed floor and one logical-request ledger row | Primary failure, fallback success/failure, cancellation and idempotence tests |
