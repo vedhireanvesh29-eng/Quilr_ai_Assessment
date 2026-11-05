@@ -53,7 +53,7 @@ async def test_task3_bom_and_multibyte_boundaries():
         for value in b'\xef\xbb\xbfdata: {"text":"caf\xc3\xa9"}\r\n\r\n':
             yield bytes([value])
 
-    assert [json.loads(value)["text"] async for value in sse_data(source())] == ["café"]
+    assert [json.loads(value)["text"] async for value in sse_data(source())] == ["caf\u00e9"]
 
 
 async def test_task3_mock_chunk_configuration_and_incomplete_stream():
@@ -182,25 +182,30 @@ async def test_task4_fallback_overrun_usage_remains_charged(tmp_path):
         await limiter.reserve("tenant", 1)
 
 
-async def test_task4_late_completion_restores_deleted_stale_charge(tmp_path):
+async def test_task4_late_completion_keeps_original_window(tmp_path):
     now = 1000.0
     limiter = RateLimiter(str(tmp_path / "usage.db"), limit=50, clock=lambda: now)
     await limiter.initialize()
-    request_id = await limiter.reserve("tenant", 20)
+    reservation = await limiter.reserve_context("tenant", 20)
     now += 121
     await limiter.reserve("other", 1)
     now += 61
     await limiter.reserve("other", 1)
-    await limiter.reconcile(request_id, 30, tenant="tenant", reserved=20)
-    with pytest.raises(RateLimitExceeded):
-        await limiter.reserve("tenant", 21)
+    await limiter.reconcile(reservation.request_id, 30, reservation=reservation)
+    with limiter._connect() as connection:
+        row = connection.execute(
+            "SELECT reserved_at,completed_at,actual FROM events WHERE request_id=?",
+            (reservation.request_id,),
+        ).fetchone()
+    assert row == (1000, 1182, 30)
+    await limiter.reserve("tenant", 50)
 
 
 async def test_task4_duplicate_reconciliation_is_idempotent(tmp_path):
     limiter = RateLimiter(str(tmp_path / "usage.db"), limit=50)
     await limiter.initialize()
     request_id = await limiter.reserve("tenant", 30)
-    await limiter.reconcile(request_id, 20, tenant="tenant", reserved=30)
+    await limiter.reconcile(request_id, 20)
     await limiter.reconcile(request_id, 1)
     await limiter.reserve("tenant", 30)
     with pytest.raises(RateLimitExceeded):
@@ -295,3 +300,30 @@ def test_task3_card_whitespace_normalization_across_every_split(separator):
         guard = StreamingRedactor()
         output = guard.feed(text[:boundary]) + guard.feed(text[boundary:]) + guard.finish()
         assert output == "card=[REDACTED] done"
+
+
+async def test_task2_http_failure_cannot_forward_private_jsonrpc_details():
+    app = gateway(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                500,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 7,
+                    "error": {"code": -32603, "message": "private database credentials"},
+                },
+            )
+        )
+    )
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/mcp",
+                headers={"Authorization": "Bearer dev-viewer"},
+                json={"jsonrpc": "2.0", "id": 7, "method": "tools/list"},
+            )
+    assert response.status_code == 502
+    assert response.json()["id"] == 7
+    assert "private" not in response.text

@@ -1,16 +1,17 @@
-# Requirements-review verification
+# Verification
 
-The review uses the original four-task assessment and the detailed Python implementation requirements.
+Application revision: [9b695b7](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/commit/9b695b73d126220bbe4ea17274c4a421438393af).
 
-- **83 passed, 0 failed, 0 skipped** on the measured Linux CI run.
-- Local Windows execution: **83 passed**; Ruff lint and all 40 Python files' formatting checks passed.
-- Linux and Windows CI run locked installation, lint, formatting, all tests, and the live verifier.
-- The live verifier launches the real SDK stdio server plus five HTTP processes on isolated ports with a temporary on-disk SQLite database.
-- Real checks cover discovery, customer lookup, simulated refund, viewer/admin policy, streamed PII removal, primary completion, backup completion, and token quota rejection.
-- Child-exit, occupied-port, resource cleanup, released-port, cancellation, stale reconciliation and separate-interpreter persistence regressions are included.
+Local Linux checks completed with Python 3.12.14:
 
-[Measured run](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/actions/runs/42109900861)
-[Raw per-task counts and performance samples](../docs/metrics.json)
-[Assessment-to-test mapping](../REQUIREMENTS.md)
+- `uv sync --locked`: passed.
+- `uv run ruff check .`: passed.
+- `uv run ruff format --check .`: passed, 42 Python files.
+- `uv run pytest -v --junitxml=results.xml`: 106 passed, 0 failed, 0 skipped.
+- `uv run python scripts/verify_all.py`: all nine stdio/TCP checks passed.
+- `uv run python scripts/benchmark.py`: completed.
+- `uv run --with matplotlib==3.10.7 python scripts/benchmark_report.py`: completed; raw measurements and four PNGs regenerated.
 
-The committed performance plots are dated snapshots from the revision recorded in `docs/metrics.json`. They use controlled mocks and do not claim real-vendor latency. Five inherited duplicate cases were removed before adding independent regressions.
+[GitHub Actions](https://github.com/vedhireanvesh29-eng/Quilr_ai_Assessment/actions/runs/42120304096) checks Linux and Windows. [Raw measurements](../docs/metrics.json) record the source SHA, environment, timestamp, samples, and per-task counts. [Requirements](../REQUIREMENTS.md) map behavior to tests.
+
+Measurements use local mocks and real SQLite operations. They do not represent remote-provider performance. Test totals count collected cases rather than code coverage.
